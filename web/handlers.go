@@ -164,6 +164,8 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 			jsonErr(w, 500, err.Error())
 			return
 		}
+		// Notificar
+		go s.notifyAgentEvent(agentName, "launch")
 		jsonResp(w, map[string]string{"status": "launched", "name": agentName, "session": a.Session})
 
 	case "stop":
@@ -171,6 +173,8 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 			jsonErr(w, 500, err.Error())
 			return
 		}
+		// Notificar
+		go s.notifyAgentEvent(agentName, "stop")
 		jsonResp(w, map[string]string{"status": "stopped", "name": agentName})
 
 	case "output":
@@ -243,6 +247,8 @@ func (s *Server) handleDebate(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			s.debate.Start()
+			// Cargar decisiones previas relacionadas
+			go s.loadRelatedDecisions()
 			jsonResp(w, map[string]interface{}{
 				"status": "started",
 				"topic":  body.Topic,
@@ -254,6 +260,8 @@ func (s *Server) handleDebate(w http.ResponseWriter, r *http.Request) {
 				jsonErr(w, 400, "No active debate")
 				return
 			}
+			// Guardar estado final en memoria antes de detener
+			s.saveDebateToMemory()
 			s.debate.Stop()
 			jsonResp(w, map[string]interface{}{
 				"status": "stopped",
@@ -325,6 +333,15 @@ func (s *Server) handleDebateMessage(w http.ResponseWriter, r *http.Request) {
 			s.debate.AddAgentMsg(ac.AgentName, ac.Role, response)
 			s.debate.UpdateVote(ac.AgentName, randomVote(), randomCtx(ac.ContextPct), "Analizando...")
 		}
+
+		// Auto-search: si hay agentes con contexto < 70%, buscar información
+		go s.autoSearchForDebate(s.debate.Topic)
+
+		// Guardar decisión si hay consenso >= 80%
+		s.saveDebateToMemory()
+
+		// Notificar si hay consenso
+		go s.notifyConsensus()
 	}
 
 	jsonResp(w, map[string]interface{}{
@@ -371,6 +388,10 @@ func (s *Server) handleDebateVote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.debate.UpdateVote(body.AgentName, vote, randomCtx(50), fmt.Sprintf("Votó: %s", vote.Symbol()))
+
+	// Verificar consenso después del voto
+	s.saveDebateToMemory()
+	go s.notifyConsensus()
 
 	jsonResp(w, map[string]interface{}{
 		"status": "voted",

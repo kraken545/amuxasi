@@ -485,6 +485,126 @@ async function saveConfig() {
   toast('Config save coming soon');
 }
 
+// ---- Search (SearXNG) ----
+async function doSearch() {
+  const input = document.getElementById('search-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  const resultsDiv = document.getElementById('search-results');
+  resultsDiv.innerHTML = '<div class="table-placeholder">Searching...</div>';
+
+  try {
+    const data = await API.post('/search', { query });
+    if (!data.results || data.results.length === 0) {
+      resultsDiv.innerHTML = '<div class="table-placeholder">No results found.</div>';
+      return;
+    }
+    resultsDiv.innerHTML = data.results.map(r => `
+      <div class="search-result" style="padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="font-weight:500;color:var(--accent);">${escapeHtml(r.title)}</div>
+        <div style="font-size:12px;color:var(--muted);">${escapeHtml(r.url)}</div>
+        <div style="font-size:13px;margin-top:4px;color:var(--fg);">${escapeHtml(r.content || '')}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    resultsDiv.innerHTML = `<div class="table-placeholder">Error: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// Enter to search
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) {
+    searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doSearch();
+      }
+    });
+  }
+});
+
+// ---- Memory (ChromaDB) ----
+async function loadMemory() {
+  try {
+    const data = await API.get('/memory/decisions');
+    const div = document.getElementById('memory-decisions');
+    if (!data.results || data.results.length === 0) {
+      div.innerHTML = '<div class="table-placeholder">No decisions stored yet. Start a debate and reach consensus to save one.</div>';
+      return;
+    }
+    div.innerHTML = data.results.map(item => `
+      <div class="memory-item" style="padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="font-size:13px;color:var(--fg);">${escapeHtml(item.content)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+          ${item.metadata?.topic ? 'Topic: ' + escapeHtml(item.metadata.topic) : ''}
+          ${item.metadata?.consensus ? ' · Consensus: ' + item.metadata.consensus : ''}
+          ${item.metadata?.timestamp ? ' · ' + new Date(item.metadata.timestamp).toLocaleString() : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    document.getElementById('memory-decisions').innerHTML = `<div class="table-placeholder">Error: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function queryMemory() {
+  const input = document.getElementById('memory-query-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  const div = document.getElementById('memory-results');
+  div.innerHTML = '<div class="table-placeholder">Querying...</div>';
+
+  try {
+    const data = await API.get(`/memory?q=${encodeURIComponent(query)}&collection=decisions`);
+    if (!data.results || data.results.length === 0) {
+      div.innerHTML = '<div class="table-placeholder">No matching memories found.</div>';
+      return;
+    }
+    div.innerHTML = data.results.map(item => `
+      <div class="memory-item" style="padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="font-size:13px;color:var(--fg);">${escapeHtml(item.content)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+          Distance: ${item.distance ? item.distance.toFixed(3) : '-'}
+          ${item.metadata?.timestamp ? ' · ' + new Date(item.metadata.timestamp).toLocaleString() : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    div.innerHTML = `<div class="table-placeholder">Error: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function storeMemory() {
+  const input = document.getElementById('memory-store-input');
+  const content = input.value.trim();
+  if (!content) return;
+
+  try {
+    const res = await API.post('/memory', {
+      collection: 'manual',
+      content: content,
+      metadata: { source: 'web_ui' }
+    });
+    toast(`Stored: ${res.id}`);
+    input.value = '';
+  } catch (err) {
+    toast(`Error: ${err.message}`);
+  }
+}
+
+// ---- Notify (ntfy) ----
+async function testNotify() {
+  try {
+    const res = await API.post('/notify/test', {});
+    toast(`✅ ${res.status}`);
+  } catch (err) {
+    toast(`Error: ${err.message}`);
+  }
+}
+
 // ---- Helpers ----
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -530,9 +650,39 @@ async function checkHealth() {
   }
 }
 
-// ---- Connection Status in Nav ----
-// Add connection status element after ws-name
+// ---- Polling ----
+let pollInterval;
+
+function startPolling() {
+  loadDashboard();
+  loadAgentsList();
+  loadKeys();
+  loadConfig();
+  loadMemory();
+  checkHealth();
+  pollInterval = setInterval(() => {
+    loadDashboard();
+    loadAgentsList();
+    loadDebate();
+    loadMemory();
+    checkHealth();
+  }, 3000);
+}
+
+function stopPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+}
+
+// ---- Init ----
 document.addEventListener('DOMContentLoaded', () => {
+  // Auth check
+  const meta = document.querySelector('meta[name="amuxasi-auth"]');
+  if (meta && meta.getAttribute('content') === 'true') {
+    const token = getAuthToken();
+    if (!token) promptAuth();
+  }
+
+  // Connection status element
   const statusEl = document.querySelector('.nav-status');
   if (statusEl && !document.getElementById('connection-status')) {
     const conn = document.createElement('span');
@@ -542,44 +692,23 @@ document.addEventListener('DOMContentLoaded', () => {
     conn.style.cssText = 'font-size:11px;color:var(--muted);margin-left:8px;';
     statusEl.appendChild(conn);
   }
-});
 
-// ---- Polling ----
-let pollInterval;
+  // Search Enter key
+  document.getElementById('search-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+  });
 
-function startPolling() {
-  loadDashboard();
-  loadAgentsList();
-  loadKeys();
-  loadConfig();
-  checkHealth();
-  pollInterval = setInterval(() => {
-    loadDashboard();
-    loadAgentsList();
-    loadDebate();
-    checkHealth();
-  }, 3000);
-}
+  // Memory Enter keys
+  document.getElementById('memory-query-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); queryMemory(); }
+  });
+  document.getElementById('memory-store-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); storeMemory(); }
+  });
 
-function stopPolling() {
-  if (pollInterval) clearInterval(pollInterval);
-}
-
-// ---- Auth Check on Load ----
-function checkAuthOnLoad() {
-  const meta = document.querySelector('meta[name="amuxasi-auth"]');
-  if (meta && meta.getAttribute('content') === 'true') {
-    const token = getAuthToken();
-    if (!token) {
-      promptAuth();
-    }
-  }
-}
-
-// ---- Init ----
-document.addEventListener('DOMContentLoaded', () => {
-  checkAuthOnLoad();
+  // Start everything
   startPolling();
+
   // Cleanup on page unload
   window.addEventListener('beforeunload', stopPolling);
 });

@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/amuxasi/amuxasi/debate"
+	"github.com/amuxasi/amuxasi/memory"
+	"github.com/amuxasi/amuxasi/notify"
+	"github.com/amuxasi/amuxasi/search"
 )
 
 //go:embed static/*
@@ -26,6 +29,11 @@ type Server struct {
 	debateMu   sync.Mutex
 	authToken  string // empty = no auth
 	rateLimit  *RateLimiter
+
+	// Integraciones
+	searchClient *search.Client
+	memoryStore  *memory.Store
+	notifyClient *notify.Client
 }
 
 // RateLimiter simple para prevenir abusos.
@@ -72,9 +80,28 @@ func NewServer(port int, workspacePath string) *Server {
 		debate:     debate.NewDebateSession(""),
 		authToken:  token,
 		rateLimit:  NewRateLimiter(),
+
+		// Integraciones (modo silencioso si los servicios no están disponibles)
+		searchClient: search.NewClient(),
+		memoryStore:  memory.NewStore(),
+		notifyClient: notify.NewClient(),
 	}
 	s.routes()
+	logInit()
 	return s
+}
+
+func logInit() {
+	fmt.Println("   Integraciones: search (SearXNG), memory (ChromaDB), notify (ntfy)")
+	if os.Getenv("SEARXNG_URL") != "" {
+		fmt.Printf("   → SearXNG: %s\n", os.Getenv("SEARXNG_URL"))
+	}
+	if os.Getenv("CHROMADB_URL") != "" {
+		fmt.Printf("   → ChromaDB: %s\n", os.Getenv("CHROMADB_URL"))
+	}
+	if os.Getenv("NTFY_URL") != "" {
+		fmt.Printf("   → ntfy: %s\n", os.Getenv("NTFY_URL"))
+	}
 }
 
 func (s *Server) routes() {
@@ -91,6 +118,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/keys", cors(s.requireAuth(s.rateLimitMiddleware(s.handleKeys))))
 	s.mux.HandleFunc("/api/config", cors(s.requireAuth(s.rateLimitMiddleware(s.handleConfig))))
 	s.mux.HandleFunc("/api/logs", cors(s.requireAuth(s.rateLimitMiddleware(s.handleLogs))))
+
+	// Integraciones
+	s.mux.HandleFunc("/api/search", cors(s.requireAuth(s.rateLimitMiddleware(s.handleSearch))))
+	s.mux.HandleFunc("/api/memory", cors(s.requireAuth(s.rateLimitMiddleware(s.handleMemory))))
+	s.mux.HandleFunc("/api/memory/decisions", cors(s.requireAuth(s.rateLimitMiddleware(s.handleMemoryDecisions))))
+	s.mux.HandleFunc("/api/notify/test", cors(s.requireAuth(s.rateLimitMiddleware(s.handleNotifyTest))))
 
 	// Static files (SPA) — sin auth para que funcione el frontend
 	s.mux.HandleFunc("/", s.handleStatic)

@@ -12,6 +12,7 @@ import (
 	"github.com/amuxasi/amuxasi/agent"
 	"github.com/amuxasi/amuxasi/compare"
 	"github.com/amuxasi/amuxasi/debate"
+	"github.com/amuxasi/amuxasi/research"
 	"github.com/amuxasi/amuxasi/workspace"
 )
 
@@ -453,4 +454,112 @@ func (s *Server) notifyConsensus() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s.notifyClient.NotifyConsensus(ctx, s.debate.Topic, s.debate.Consensus.ConsensusPct)
+}
+
+// ──────────────────────────────────────────────
+//  DEEP RESEARCH — Investigación multi-ronda
+// ──────────────────────────────────────────────
+
+// researchSearcher adapta search.Client a research.Searcher.
+type researchSearcher struct {
+	client *search.Client
+}
+
+func (rs *researchSearcher) Search(ctx context.Context, query string, limit int) ([]research.Result, error) {
+	results, err := rs.client.Search(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	if results == nil {
+		return nil, nil
+	}
+	adapted := make([]research.Result, len(results))
+	for i, r := range results {
+		adapted[i] = research.Result{
+			Title:   r.Title,
+			URL:     r.URL,
+			Content: r.Content,
+			Source:  r.Source,
+		}
+	}
+	return adapted, nil
+}
+
+// handleResearch inicia una investigación o lista las activas.
+// GET  /api/research — lista sesiones
+// POST /api/research — inicia nueva investigación
+func (s *Server) handleResearch(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		s.researchMu.Lock()
+		sessions := make([]map[string]interface{}, 0, len(s.researchSessions))
+		for _, rs := range s.researchSessions {
+			st := rs.State()
+			st["report"] = nil // no enviar informes completos en lista
+			sessions = append(sessions, st)
+		}
+		s.researchMu.Unlock()
+		jsonResp(w, sessions)
+
+	case "POST":
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		var body struct {
+			Query    string `json:"query"`
+			MaxDepth int    `json:"max_depth"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			jsonErr(w, 400, "invalid JSON")
+			return
+		}
+		body.Query = strings.TrimSpace(body.Query)
+		if body.Query == "" {
+			jsonErr(w, 400, "query is required")
+			return
+		}
+		if len(body.Query) > 500 {
+			jsonErr(w, 400, "query too long")
+			return
+		}
+
+		s.researchMu.Lock()
+		s.researchIDCounter++
+		id := fmt.Sprintf("rsrch-%d", s.researchIDCounter)
+		searcher := &researchSearcher{client: s.searchClient}
+		session := research.NewSession(id, body.Query, body.MaxDepth, searcher)
+		s.researchSessions[id] = session
+		s.researchMu.Unlock()
+
+		// Ejecutar en background
+		ctx := context.Background()
+		go session.Run(ctx)
+
+		jsonResp(w, map[string]interface{}{
+			"status":  "started",
+			"id":      id,
+			"session": session.State(),
+		})
+
+	default:
+		jsonErr(w, 405, "method not allowed")
+	}
+}
+
+// handleResearchByID devuelve el estado de una investigación específica.
+func (s *Server) handleResearchByID(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/research/")
+	if id == "" {
+		jsonErr(w, 400, "research session ID required")
+		return
+	}
+
+	s.researchMu.Lock()
+	session, ok := s.researchSessions[id]
+	s.researchMu.Unlock()
+
+	if !ok {
+		jsonErr(w, 404, fmt.Sprintf("research session %s not found", id))
+		return
+	}
+
+	jsonResp(w, session.State())
 }

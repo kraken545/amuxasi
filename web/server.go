@@ -16,6 +16,7 @@ import (
 	"github.com/amuxasi/amuxasi/debate"
 	"github.com/amuxasi/amuxasi/memory"
 	"github.com/amuxasi/amuxasi/notify"
+	"github.com/amuxasi/amuxasi/research"
 	"github.com/amuxasi/amuxasi/search"
 )
 
@@ -40,6 +41,11 @@ type Server struct {
 	compareSessions   map[string]*compare.CompareSession
 	compareMu         sync.Mutex
 	compareIDCounter  int
+
+	// Research
+	researchSessions   map[string]*research.ResearchSession
+	researchMu         sync.Mutex
+	researchIDCounter  int
 }
 
 // RateLimiter simple para prevenir abusos.
@@ -94,6 +100,9 @@ func NewServer(port int, workspacePath string) *Server {
 
 		// Compare
 		compareSessions: make(map[string]*compare.CompareSession),
+
+		// Research
+		researchSessions: make(map[string]*research.ResearchSession),
 	}
 	s.routes()
 	logInit()
@@ -137,6 +146,10 @@ func (s *Server) routes() {
 	// Compare
 	s.mux.HandleFunc("/api/compare", cors(s.requireAuth(s.rateLimitMiddleware(s.handleCompare))))
 	s.mux.HandleFunc("/api/compare/", cors(s.requireAuth(s.rateLimitMiddleware(s.handleCompareByID))))
+
+	// Research
+	s.mux.HandleFunc("/api/research", cors(s.requireAuth(s.rateLimitMiddleware(s.handleResearch))))
+	s.mux.HandleFunc("/api/research/", cors(s.requireAuth(s.rateLimitMiddleware(s.handleResearchByID))))
 
 	// Static files (SPA) — sin auth para que funcione el frontend
 	s.mux.HandleFunc("/", s.handleStatic)

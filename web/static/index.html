@@ -46,6 +46,10 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Debate
         </a>
+        <a class="nav-item" data-section="research" href="#research">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+          Deep Research
+        </a>
         <a class="nav-item" data-section="search" href="#search">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           Search
@@ -210,6 +214,36 @@
         </div>
         <div id="compare-sessions" style="margin-top:16px;">
           <div class="table-placeholder">No comparisons yet. Run one to see results side by side.</div>
+        </div>
+      </section>
+
+      <!-- Deep Research -->
+      <section id="section-research" class="section">
+        <div class="section-header">
+          <h1>🔬 Deep Research</h1>
+          <div class="header-actions">
+            <span style="font-size:12px;color:var(--muted);">Multi-round web investigation with auto-report</span>
+          </div>
+        </div>
+        <div class="card">
+          <h3>New Research</h3>
+          <div style="margin-bottom:12px;">
+            <textarea id="research-query" rows="3" placeholder="Enter a research question or topic..." style="width:100%;padding:8px 12px;background:var(--bg-secondary);border:1px solid var(--border);color:var(--fg);border-radius:6px;font-size:14px;font-family:inherit;resize:vertical;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+              <span style="font-size:13px;color:var(--muted);">Depth:</span>
+              <select id="research-depth" style="padding:6px;background:var(--bg-secondary);border:1px solid var(--border);color:var(--fg);border-radius:4px;">
+                <option value="1">1 — Quick</option>
+                <option value="2" selected>2 — Standard</option>
+                <option value="3">3 — Deep</option>
+                <option value="4">4 — Very Deep</option>
+                <option value="5">5 — Maximum</option>
+              </select>
+              <button class="btn primary" onclick="startResearch()" style="margin-left:auto;">Start Research</button>
+            </div>
+          </div>
+        </div>
+        <div id="research-sessions">
+          <div class="table-placeholder">No research sessions yet.</div>
         </div>
       </section>
 

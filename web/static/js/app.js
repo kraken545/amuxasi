@@ -596,6 +596,129 @@ function truncStr(s, max) {
   return s.substring(0, max) + '...';
 }
 
+// ---- Deep Research ----
+async function startResearch() {
+  const query = document.getElementById('research-query').value.trim();
+  const maxDepth = parseInt(document.getElementById('research-depth').value) || 3;
+
+  if (!query) {
+    toast('Please enter a research query');
+    return;
+  }
+
+  try {
+    const res = await API.post('/research', { query, max_depth: maxDepth });
+    toast(`Research started: ${res.id}`);
+    loadResearchSessions();
+  } catch (err) {
+    toast(`Error: ${err.message}`);
+  }
+}
+
+async function loadResearchSessions() {
+  try {
+    const sessions = await API.get('/research');
+    const div = document.getElementById('research-sessions');
+
+    if (!sessions || sessions.length === 0) {
+      div.innerHTML = '<div class="table-placeholder">No research sessions yet.</div>';
+      return;
+    }
+
+    div.innerHTML = sessions.map(s => {
+      const isComplete = s.status === 'complete';
+      const rounds = s.rounds || [];
+      const roundsInfo = rounds.map(r =>
+        `R${r.number}: ${r.findings?.length || 0} findings, ${r.subtopics?.length || 0} subtopics`
+      ).join(' • ');
+
+      return `
+        <div class="card" style="margin-bottom:12px;cursor:pointer;" onclick="viewResearch('${s.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <strong>${escapeHtml(s.query)}</strong>
+                <span class="status-badge" style="font-size:11px;padding:2px 8px;border-radius:10px;background:${isComplete ? 'var(--green)' : 'var(--yellow)'}20;color:${isComplete ? 'var(--green)' : 'var(--yellow)'};">${s.status}</span>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px;">
+                Depth: ${s.depth || 0}/${s.max_depth || 3} • ${roundsInfo}
+              </div>
+              ${s.progress ? `<div style="font-size:12px;color:var(--accent);margin-top:4px;">${escapeHtml(s.progress)}</div>` : ''}
+            </div>
+            ${isComplete ? '<span style="color:var(--green);font-size:13px;">📄 View Report →</span>' : '<span style="color:var(--yellow);">⏳</span>'}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Research load error:', err);
+  }
+}
+
+async function viewResearch(id) {
+  try {
+    const s = await API.get(`/research/${id}`);
+    if (!s) return;
+
+    // Build a detailed view as a modal or expandable section
+    const div = document.getElementById('research-sessions');
+    const findings = s.findings || [];
+    const rounds = s.rounds || [];
+
+    let html = `
+      <div class="card" style="margin-bottom:12px;border-color:var(--accent);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div>
+            <h3 style="margin:0;">${escapeHtml(s.query)}</h3>
+            <span style="font-size:12px;color:var(--muted);">${s.id} • Status: ${s.status} • ${s.findings_count || 0} findings • ${rounds.length} rounds</span>
+          </div>
+          <button class="btn" onclick="loadResearchSessions()">Back</button>
+        </div>`;
+
+    // Report
+    if (s.report) {
+      html += `
+        <div style="padding:16px;background:var(--bg);border-radius:6px;margin-bottom:12px;">
+          <h4 style="margin:0 0 8px 0;color:var(--accent);">📄 ${escapeHtml(s.report.title)}</h4>
+          <p style="font-size:13px;color:var(--fg);">${escapeHtml(s.report.summary)}</p>
+          <div style="font-size:12px;color:var(--muted);margin-top:8px;">
+            ${s.report.word_count || 0} words • ${s.report.sources?.length || 0} sources
+          </div>
+          ${s.report.sources?.length > 0 ? `
+            <div style="margin-top:8px;">
+              <strong style="font-size:13px;">Sources:</strong>
+              <ul style="font-size:12px;color:var(--muted);margin:4px 0 0 0;padding-left:20px;">
+                ${s.report.sources.map(src => `<li><a href="${escapeHtml(src)}" target="_blank" style="color:var(--accent);">${escapeHtml(src)}</a></li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+        </div>`;
+    }
+
+    // Rounds
+    rounds.forEach(r => {
+      html += `
+        <div style="padding:12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;">
+            <strong>Round ${r.number}: ${escapeHtml(r.query)}</strong>
+            <span style="font-size:11px;color:var(--muted);">${r.findings?.length || 0} findings</span>
+          </div>
+          ${r.subtopics?.length > 0 ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;">Subtopics: ${r.subtopics.map(st => escapeHtml(st)).join(', ')}</div>` : ''}
+          ${(r.findings || []).map(f => `
+            <div style="margin-top:4px;padding:4px 8px;background:var(--bg);border-radius:4px;font-size:12px;">
+              <a href="${escapeHtml(f.url)}" target="_blank" style="color:var(--accent);">${escapeHtml(f.title)}</a>
+            </div>
+          `).join('')}
+        </div>`;
+    });
+
+    html += '</div>';
+    div.innerHTML = html;
+  } catch (err) {
+    toast(`Error: ${err.message}`);
+  }
+}
+
 // ---- Search (SearXNG) ----
 async function doSearch() {
   const input = document.getElementById('search-input');
@@ -770,6 +893,7 @@ function startPolling() {
   loadKeys();
   loadConfig();
   loadCompareSessions();
+  loadResearchSessions();
   loadMemory();
   checkHealth();
   pollInterval = setInterval(() => {
@@ -778,6 +902,7 @@ function startPolling() {
     loadDebate();
     loadMemory();
     loadCompareSessions();
+    loadResearchSessions();
     checkHealth();
   }, 3000);
 }
@@ -805,6 +930,11 @@ document.addEventListener('DOMContentLoaded', () => {
     conn.style.cssText = 'font-size:11px;color:var(--muted);margin-left:8px;';
     statusEl.appendChild(conn);
   }
+
+  // Research Enter key
+  document.getElementById('research-query')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); startResearch(); }
+  });
 
   // Search Enter key
   document.getElementById('search-input')?.addEventListener('keydown', e => {

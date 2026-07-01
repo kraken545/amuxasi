@@ -1,0 +1,27 @@
+# Binarios
+/amuxasi
+amuxasi.exe
+*.exe
+
+# Logs
+*.log
+
+# Config local del usuario
+.env
+.env.local
+*.local.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archivos de build temporal
+/tmp/
+/out/

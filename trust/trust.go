@@ -64,8 +64,14 @@ func (s *Store) save() error {
 	if err != nil {
 		return fmt.Errorf("marshal trust store: %w", err)
 	}
-	if err := os.WriteFile(s.path, data, 0644); err != nil {
-		return fmt.Errorf("write trust store: %w", err)
+	// Escritura atómica: escribir a archivo temporal + renombrar
+	tmpPath := s.path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("write trust store (tmp): %w", err)
+	}
+	if err := os.Rename(tmpPath, s.path); err != nil {
+		os.Remove(tmpPath) // cleanup
+		return fmt.Errorf("rename trust store: %w", err)
 	}
 	return nil
 }

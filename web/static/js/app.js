@@ -1,22 +1,69 @@
 // Amuxasi Web UI — Application JavaScript
 // Odysseus-inspired design, self-hosted, privacy-first
 
+// ── Auth token handling ──────────────────────────────────
+function getAuthToken() {
+  return localStorage.getItem('amuxasi_token') || '';
+}
+
+function setAuthToken(token) {
+  if (token) {
+    localStorage.setItem('amuxasi_token', token);
+  } else {
+    localStorage.removeItem('amuxasi_token');
+  }
+}
+
+function authHeaders() {
+  const token = getAuthToken();
+  return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+
+// ── API Client ───────────────────────────────────────────
 const API = {
   async get(path) {
-    const res = await fetch(`/api${path}`);
+    const res = await fetch(`/api${path}`, {
+      headers: { ...authHeaders() },
+    });
+    if (res.status === 401) {
+      const errData = await res.json().catch(() => ({}));
+      if (errData.error && errData.error.includes('authentication required')) {
+        promptAuth();
+        throw new Error('Authentication required');
+      }
+      throw new Error(errData.error || 'Unauthorized');
+    }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
   async post(path, body) {
     const res = await fetch(`/api${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     });
+    if (res.status === 401) {
+      const errData = await res.json().catch(() => ({}));
+      if (errData.error && errData.error.includes('authentication required')) {
+        promptAuth();
+        throw new Error('Authentication required');
+      }
+      throw new Error(errData.error || 'Unauthorized');
+    }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
 };
+
+function promptAuth() {
+  const existing = getAuthToken();
+  const token = prompt('🔐 Amuxasi requiere autenticación\nIngresa el token (AMUXASI_TOKEN):', existing);
+  if (token !== null) {
+    setAuthToken(token.trim());
+    toast('Token guardado — recargando...');
+    setTimeout(() => location.reload(), 500);
+  }
+}
 
 // ---- Navigation ----
 document.querySelectorAll('[data-section]').forEach(el => {
@@ -518,8 +565,20 @@ function stopPolling() {
   if (pollInterval) clearInterval(pollInterval);
 }
 
+// ---- Auth Check on Load ----
+function checkAuthOnLoad() {
+  const meta = document.querySelector('meta[name="amuxasi-auth"]');
+  if (meta && meta.getAttribute('content') === 'true') {
+    const token = getAuthToken();
+    if (!token) {
+      promptAuth();
+    }
+  }
+}
+
 // ---- Init ----
 document.addEventListener('DOMContentLoaded', () => {
+  checkAuthOnLoad();
   startPolling();
   // Cleanup on page unload
   window.addEventListener('beforeunload', stopPolling);

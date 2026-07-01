@@ -3,22 +3,72 @@ services:
     build: .
     container_name: amuxasi
     ports:
-      - "7001:7000"
+      - "7000:7000"
     environment:
       - AMUXASI_PORT=7000
       - AMUXASI_WORKSPACE=/workspace
+      - AMUXASI_TOKEN=${AMUXASI_TOKEN:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      # Servicios complementarios
+      - SEARXNG_URL=http://searxng:8080
+      - CHROMADB_URL=http://chromadb:8000
+      - NTFY_URL=http://ntfy:80
     volumes:
-      # Monta tu proyecto en /workspace
       - .:/workspace
-      # Persiste configuración y caché
       - amuxasi-config:/home/amuxasi/.config/amuxasi
       - amuxasi-cache:/home/amuxasi/.cache/amuxasi
+    depends_on:
+      searxng:
+        condition: service_started
+      chromadb:
+        condition: service_started
+      ntfy:
+        condition: service_started
+    restart: unless-stopped
+
+  # ─── SearXNG — Meta-buscador privado ───────────────────
+  searxng:
+    image: searxng/searxng:2026.5.31-7159b8aed
+    container_name: searxng
+    ports:
+      - "8081:8080"
+    environment:
+      - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME:-localhost}/
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-changeme}
+    volumes:
+      - searxng-data:/etc/searxng
+    restart: unless-stopped
+
+  # ─── ChromaDB — Base de datos vectorial ────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8100:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/data
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chromadb-data:/chroma/data
+    restart: unless-stopped
+
+  # ─── ntfy — Notificaciones push ────────────────────────
+  ntfy:
+    image: binwiederhier/ntfy
+    container_name: ntfy
+    ports:
+      - "8091:80"
+    volumes:
+      - ntfy-data:/var/lib/ntfy
     restart: unless-stopped
 
 volumes:
   amuxasi-config:
   amuxasi-cache:
+  searxng-data:
+  chromadb-data:
+  ntfy-data:

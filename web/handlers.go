@@ -207,6 +207,8 @@ func (s *Server) handleDebate(w http.ResponseWriter, r *http.Request) {
 
 	case "POST":
 		// POST /api/debate — iniciar/detener debate
+		r.Body = http.MaxBytesReader(w, r.Body, 4096) // 4KB
+
 		var body struct {
 			Action string `json:"action"` // "start" | "stop"
 			Topic  string `json:"topic,omitempty"`
@@ -216,6 +218,9 @@ func (s *Server) handleDebate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		body.Action = strings.TrimSpace(body.Action)
+		body.Topic = strings.TrimSpace(body.Topic)
+
 		switch body.Action {
 		case "start":
 			if s.debate.Active {
@@ -224,6 +229,10 @@ func (s *Server) handleDebate(w http.ResponseWriter, r *http.Request) {
 			}
 			if body.Topic == "" {
 				body.Topic = "General discussion"
+			}
+			if len(body.Topic) > 500 {
+				jsonErr(w, 400, "topic too long")
+				return
 			}
 			s.debate = debate.NewDebateSession(body.Topic)
 			// Add agents from config
@@ -260,11 +269,21 @@ func (s *Server) handleDebate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+const (
+	maxMessageLen  = 10000 // máx caracteres por mensaje
+	maxMessages    = 500   // máx mensajes en un debate
+	maxAgentNameLen = 100  // máx caracteres para nombre de agente
+	maxStatusLen   = 200   // máx caracteres para status text
+)
+
 func (s *Server) handleDebateMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		jsonErr(w, 405, "POST required")
 		return
 	}
+
+	// Limit body size
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB max
 
 	s.debateMu.Lock()
 	defer s.debateMu.Unlock()
@@ -277,8 +296,17 @@ func (s *Server) handleDebateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body.Message = strings.TrimSpace(body.Message)
 	if body.Message == "" {
 		jsonErr(w, 400, "message is required")
+		return
+	}
+	if len(body.Message) > maxMessageLen {
+		jsonErr(w, 400, "message too long")
+		return
+	}
+	if len(s.debate.Messages) >= maxMessages {
+		jsonErr(w, 400, "debate message limit reached")
 		return
 	}
 
@@ -313,6 +341,8 @@ func (s *Server) handleDebateVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 4096) // 4KB max
+
 	s.debateMu.Lock()
 	defer s.debateMu.Unlock()
 
@@ -322,6 +352,12 @@ func (s *Server) handleDebateVote(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonErr(w, 400, "invalid JSON")
+		return
+	}
+
+	body.AgentName = strings.TrimSpace(body.AgentName)
+	if body.AgentName == "" || len(body.AgentName) > maxAgentNameLen {
+		jsonErr(w, 400, "invalid agent_name")
 		return
 	}
 
@@ -357,6 +393,8 @@ func (s *Server) handleDebateDiagnostic(w http.ResponseWriter, r *http.Request) 
 		jsonResp(w, s.debate.Diagnostic)
 
 	case "POST":
+		r.Body = http.MaxBytesReader(w, r.Body, 4096) // 4KB
+
 		var body struct {
 			AgentName string `json:"agent_name"`
 			Action    string `json:"action"` // "start" | "answer"
@@ -368,6 +406,13 @@ func (s *Server) handleDebateDiagnostic(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
+		body.AgentName = strings.TrimSpace(body.AgentName)
+		if body.AgentName == "" || len(body.AgentName) > maxAgentNameLen {
+			jsonErr(w, 400, "invalid agent_name")
+			return
+		}
+		body.Answer = strings.TrimSpace(body.Answer)
+
 		switch body.Action {
 		case "start":
 			s.debate.Diagnostic = debate.NewAgentDiagnostic(body.AgentName)
@@ -378,9 +423,16 @@ func (s *Server) handleDebateDiagnostic(w http.ResponseWriter, r *http.Request) 
 				jsonErr(w, 400, "no active diagnostic")
 				return
 			}
+			if len(body.Answer) > 500 {
+				jsonErr(w, 400, "answer too long")
+				return
+			}
+			if body.QID < 1 || body.QID > 5 {
+				jsonErr(w, 400, "invalid question id (1-5)")
+				return
+			}
 			s.debate.Diagnostic.AnswerQuestion(body.QID, body.Answer)
 			if s.debate.Diagnostic.Complete {
-				// Update agent context on completion
 				s.debate.UpdateVote(body.AgentName, debate.VoteAgree, 85, "Diagnóstico completado")
 			}
 			jsonResp(w, s.debate.Diagnostic)
@@ -421,6 +473,7 @@ func randomCtx(base int) int {
 // ---- API Keys ----
 
 func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
+	// Solo devolver qué keys están configuradas, sin exponer prefijos
 	envKeys := []string{
 		"ANTHROPIC_API_KEY",
 		"OPENAI_API_KEY",
@@ -435,20 +488,12 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 	for _, k := range envKeys {
 		val := os.Getenv(k)
 		keys = append(keys, map[string]interface{}{
-			"name":   k,
-			"set":    val != "",
-			"prefix": safePrefix(val),
+			"name": k,
+			"set":  val != "",
 		})
 	}
 
 	jsonResp(w, keys)
-}
-
-func safePrefix(key string) string {
-	if len(key) <= 8 {
-		return ""
-	}
-	return key[:8] + "..."
 }
 
 // ---- Config ----

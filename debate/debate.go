@@ -18,6 +18,10 @@ const (
 	RoleDesigner    AgentRole = "disenador"
 	RoleWatcher     AgentRole = "vigia"
 	RoleSynthesizer AgentRole = "sintetizador"
+
+	// MaxMessages es el límite superior de mensajes en un debate.
+	// Cuando se alcanza, se descartan los más antiguos.
+	MaxMessages = 500
 )
 
 // RoleDisplayName devuelve el nombre legible del rol.
@@ -388,16 +392,30 @@ func (d *DebateSession) Stop() {
 // AddSystemMsg agrega un mensaje del sistema.
 func (d *DebateSession) AddSystemMsg(text string) {
 	d.Messages = append(d.Messages, NewSystemMsg(text))
+	d.trimMessages()
 }
 
 // AddUserMsg agrega un mensaje del usuario.
 func (d *DebateSession) AddUserMsg(text string) {
 	d.Messages = append(d.Messages, NewUserMsg(text))
+	d.trimMessages()
 }
 
 // AddAgentMsg agrega un mensaje de un agente.
 func (d *DebateSession) AddAgentMsg(agentName string, role AgentRole, text string) {
 	d.Messages = append(d.Messages, NewAgentMsg(agentName, role, text))
+	d.trimMessages()
+}
+
+// trimMessages mantiene el número de mensajes dentro del límite,
+// descartando los más antiguos cuando se excede MaxMessages.
+func (d *DebateSession) trimMessages() {
+	if len(d.Messages) > MaxMessages {
+		excess := len(d.Messages) - MaxMessages
+		// Siempre conservar al menos los 5 mensajes más recientes de sistema
+		// y los últimos MaxMessages - excess.
+		d.Messages = d.Messages[excess:]
+	}
 }
 
 // UpdateVote actualiza el voto y contexto de un agente.

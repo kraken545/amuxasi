@@ -29,23 +29,29 @@
 
 ### 🐳 Opción 1: Docker (recomendado — 0 configuración)
 
-**Un solo comando y ya está corriendo:**
+**Un solo comando y ya está corriendo (sin instalar nada más):**
 
 ```bash
 git clone https://github.com/kraken545/amuxasi.git
 cd amuxasi
 docker compose up -d
-# → http://localhost:7000
+# → http://localhost:7000 🎉
 ```
 
-Para especificar API keys (opcional, solo si usas agentes cloud):
+El `.env` se crea automáticamente si no existe (todo en vacío).  
+Si quieres API keys para agentes cloud:
 
 ```bash
+# Opción A: Pasarlas en el mismo comando
 ANTHROPIC_API_KEY="sk-ant-..." docker compose up -d
-# o edita docker-compose.yml y agrega tus keys
+
+# Opción B: Editar .env (se auto-creó con make docker-up o manual)
+cp .env.example .env
+# luego edita .env y agrega tus keys
+docker compose up -d
 ```
 
-El contenedor incluye tmux y git, necesarios para los agentes.
+El contenedor incluye tmux, git y todo lo necesario. Solo necesitas Docker.
 
 ### Construir la imagen manualmente
 
@@ -540,7 +546,7 @@ Amuxasi incluye una Web UI estilo Odysseus (inspirada en PewDiePie) con panel de
 ### 🐳 Usar con Docker (automático)
 
 ```bash
-# Un comando y ya:
+# Un comando — el .env se crea solo si no existe:
 docker compose up -d
 # → http://localhost:7000
 
@@ -554,13 +560,8 @@ docker compose logs -f
 docker compose down
 ```
 
-### Construir la imagen manualmente
-
-```bash
-make docker-build
-# o directamente:
-docker build -t amuxasi .
-```
+> **¿Por qué no hay `cp .env.example .env` antes?**  
+> Porque `make docker-up` y `docker compose up` ya lo hacen automáticamente. Solo crea `.env` manual si quieres editar tus API keys antes de arrancar.
 
 ### 🖥️ Usar desde tu máquina (sin Docker)
 

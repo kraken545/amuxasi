@@ -1,13 +1,9 @@
-version: "3.9"
-
 services:
   amuxasi:
     build: .
     container_name: amuxasi
     ports:
       - "7000:7000"
-    env_file:
-      - .env
     environment:
       - AMUXASI_PORT=7000
       - AMUXASI_WORKSPACE=/workspace
@@ -16,9 +12,9 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     volumes:
-      # Mount your project repo to /workspace
+      # Monta tu proyecto en /workspace
       - .:/workspace
-      # Persist config and cache
+      # Persiste configuración y caché
       - amuxasi-config:/home/amuxasi/.config/amuxasi
       - amuxasi-cache:/home/amuxasi/.cache/amuxasi
     restart: unless-stopped

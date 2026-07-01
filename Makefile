@@ -29,6 +29,11 @@ docker-build: ## Construir la imagen Docker
 	docker build -t amuxasi .
 
 docker-up: ## Arrancar con docker compose
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "📄 Creado .env desde .env.example (valores vacíos)"; \
+		echo "   Para API keys: edita .env o usa: export KEY=valor docker compose up"; \
+	fi
 	docker compose up -d
 
 docker-down: ## Detener docker compose

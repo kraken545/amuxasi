@@ -72,3 +72,4 @@ volumes:
   searxng-data:
   chromadb-data:
   ntfy-data:
+

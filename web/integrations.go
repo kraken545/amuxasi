@@ -6,10 +6,142 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/amuxasi/amuxasi/agent"
+	"github.com/amuxasi/amuxasi/compare"
 	"github.com/amuxasi/amuxasi/debate"
+	"github.com/amuxasi/amuxasi/workspace"
 )
+
+// ──────────────────────────────────────────────
+//  COMPARE — Prompt lado a lado
+// ──────────────────────────────────────────────
+
+// handleCompare lista sesiones o inicia una nueva.
+// GET  /api/compare — lista sesiones
+// POST /api/compare — inicia nueva comparación
+func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		s.compareMu.Lock()
+		sessions := make([]map[string]interface{}, 0, len(s.compareSessions))
+		for _, cs := range s.compareSessions {
+			st := cs.State()
+			st["prompt"] = truncate(st["prompt"].(string), 100)
+			sessions = append(sessions, st)
+		}
+		s.compareMu.Unlock()
+		jsonResp(w, sessions)
+
+	case "POST":
+		r.Body = http.MaxBytesReader(w, r.Body, 65536) // 64KB
+		var body struct {
+			Label       string   `json:"label"`
+			Prompt      string   `json:"prompt"`
+			AgentNames  []string `json:"agent_names"`
+			Timeout     int      `json:"timeout"` // seconds
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			jsonErr(w, 400, "invalid JSON")
+			return
+		}
+		body.Prompt = strings.TrimSpace(body.Prompt)
+		if body.Prompt == "" {
+			jsonErr(w, 400, "prompt is required")
+			return
+		}
+		if len(body.Prompt) > 10000 {
+			jsonErr(w, 400, "prompt too long (max 10k)")
+			return
+		}
+		if len(body.AgentNames) == 0 {
+			jsonErr(w, 400, "at least one agent is required")
+			return
+		}
+
+		timeout := time.Duration(body.Timeout) * time.Second
+		if timeout <= 0 || timeout > 120*time.Second {
+			timeout = 30 * time.Second
+		}
+
+		// Crear sesión
+		s.compareMu.Lock()
+		s.compareIDCounter++
+		id := fmt.Sprintf("cmp-%d", s.compareIDCounter)
+		label := body.Label
+		if label == "" {
+			label = truncate(body.Prompt, 50)
+		}
+		cs := compare.NewSession(id, label, body.Prompt)
+		s.compareSessions[id] = cs
+		s.compareMu.Unlock()
+
+		// Resolver nombres de agentes a comandos
+		ws, err := workspace.Open(s.workspace)
+		if err == nil {
+			for _, name := range body.AgentNames {
+				cmd := ""
+				if cfg, ok := ws.Cfg.Agents[name]; ok {
+					cmd = cfg.Command
+				} else {
+					// Buscar en detectados
+					for _, d := range agent.DetectAgents() {
+						if d.Name == name {
+							cmd = d.Command
+							break
+						}
+					}
+				}
+				if cmd != "" {
+					cs.AddRunner(name, cmd)
+				}
+			}
+		}
+
+		// Si no se resolvieron runners, usar detectados
+		if len(cs.GetResults()) == 0 {
+			for _, d := range agent.DetectAgents() {
+				cs.AddRunner(d.Name, d.Command)
+			}
+		}
+
+		// Ejecutar en background
+		ctx := context.Background()
+		go cs.RunAll(ctx, timeout)
+
+		jsonResp(w, map[string]interface{}{
+			"status":   "started",
+			"id":       id,
+			"sessions": cs.State(),
+		})
+
+	default:
+		jsonErr(w, 405, "method not allowed")
+	}
+}
+
+// handleCompareByID devuelve el estado de una sesión específica.
+// GET /api/compare/{id}
+func (s *Server) handleCompareByID(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/compare/")
+	if id == "" {
+		jsonErr(w, 400, "compare session ID required")
+		return
+	}
+
+	s.compareMu.Lock()
+	cs, ok := s.compareSessions[id]
+	s.compareMu.Unlock()
+
+	if !ok {
+		jsonErr(w, 404, fmt.Sprintf("compare session %s not found", id))
+		return
+	}
+
+	jsonResp(w, cs.State())
+}
 
 // ──────────────────────────────────────────────
 //  BÚSQUEDA WEB (SearXNG)

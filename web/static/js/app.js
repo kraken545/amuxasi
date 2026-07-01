@@ -485,6 +485,117 @@ async function saveConfig() {
   toast('Config save coming soon');
 }
 
+// ---- Compare ----
+async function startCompare() {
+  const label = document.getElementById('compare-label').value.trim();
+  const prompt = document.getElementById('compare-prompt').value.trim();
+  const timeout = parseInt(document.getElementById('compare-timeout').value) || 30;
+
+  if (!prompt) {
+    toast('Please enter a prompt');
+    return;
+  }
+
+  // Get selected agents
+  const checkboxes = document.querySelectorAll('#compare-agent-select input:checked');
+  const agentNames = Array.from(checkboxes).map(cb => cb.value);
+
+  if (agentNames.length === 0) {
+    toast('Please select at least one agent');
+    return;
+  }
+
+  try {
+    const res = await API.post('/compare', {
+      label,
+      prompt,
+      agent_names: agentNames,
+      timeout,
+    });
+    toast(`Compare started: ${res.id}`);
+    loadCompareSessions();
+  } catch (err) {
+    toast(`Error: ${err.message}`);
+  }
+}
+
+async function loadCompareSessions() {
+  try {
+    const sessions = await API.get('/compare');
+    const div = document.getElementById('compare-sessions');
+
+    if (!sessions || sessions.length === 0) {
+      div.innerHTML = '<div class="table-placeholder">No comparisons yet.</div>';
+      return;
+    }
+
+    div.innerHTML = sessions.map(s => {
+      const resultsHtml = (s.results || []).map(r => `
+        <div class="compare-result" style="flex:1;min-width:250px;border:1px solid var(--border);border-radius:6px;padding:12px;background:var(--bg-secondary);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong style="color:${r.status === 'complete' ? 'var(--green)' : r.status === 'error' ? 'var(--red)' : 'var(--yellow)'}">${escapeHtml(r.agent_name)}</strong>
+            <span style="font-size:11px;color:var(--muted);">${r.duration || '...'}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${r.status}</div>
+          ${r.output ? `<pre style="font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;margin:0;">${escapeHtml(truncStr(r.output, 1000))}</pre>` : ''}
+          ${r.error ? `<div style="color:var(--red);font-size:12px;margin-top:4px;">⚠️ ${escapeHtml(r.error)}</div>` : ''}
+          ${r.status === 'running' || r.status === 'pending' ? '<div style="color:var(--yellow);font-size:12px;">⏳ Running...</div>' : ''}
+        </div>
+      `).join('');
+
+      return `
+        <div class="card" style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+              <strong>${escapeHtml(s.label || 'Untitled')}</strong>
+              <span style="font-size:11px;color:var(--muted);margin-left:8px;">${s.id}</span>
+              <span style="font-size:11px;color:${s.status === 'complete' ? 'var(--green)' : 'var(--yellow)'};margin-left:8px;">${s.status}</span>
+            </div>
+            <span style="font-size:11px;color:var(--muted);">${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</span>
+          </div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:12px;padding:8px;background:var(--bg);border-radius:4px;">${escapeHtml(truncStr(s.prompt, 200))}</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">${resultsHtml}</div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Compare load error:', err);
+  }
+}
+
+async function loadCompareAgentList() {
+  try {
+    const data = await API.get('/status');
+    const div = document.getElementById('compare-agent-select');
+    const agents = data.agents || [];
+    const detected = data.detected || [];
+
+    const allAgents = [...new Set([
+      ...agents.map(a => a.name),
+      ...detected.map(d => d.name),
+    ])];
+
+    if (allAgents.length === 0) {
+      div.innerHTML = '<span style="color:var(--muted);font-size:13px;">No agents detected.</span>';
+      return;
+    }
+
+    div.innerHTML = allAgents.map(name => `
+      <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
+        <input type="checkbox" value="${name}" checked>
+        ${name}
+      </label>
+    `).join('');
+  } catch (err) {
+    console.error('Compare agent list error:', err);
+  }
+}
+
+function truncStr(s, max) {
+  if (!s || s.length <= max) return s || '';
+  return s.substring(0, max) + '...';
+}
+
 // ---- Search (SearXNG) ----
 async function doSearch() {
   const input = document.getElementById('search-input');
@@ -658,6 +769,7 @@ function startPolling() {
   loadAgentsList();
   loadKeys();
   loadConfig();
+  loadCompareSessions();
   loadMemory();
   checkHealth();
   pollInterval = setInterval(() => {
@@ -665,6 +777,7 @@ function startPolling() {
     loadAgentsList();
     loadDebate();
     loadMemory();
+    loadCompareSessions();
     checkHealth();
   }, 3000);
 }
@@ -705,6 +818,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('memory-store-input')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); storeMemory(); }
   });
+
+  // Load compare agent list
+  loadCompareAgentList();
 
   // Start everything
   startPolling();

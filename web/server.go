@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amuxasi/amuxasi/compare"
 	"github.com/amuxasi/amuxasi/debate"
 	"github.com/amuxasi/amuxasi/memory"
 	"github.com/amuxasi/amuxasi/notify"
@@ -34,6 +35,11 @@ type Server struct {
 	searchClient *search.Client
 	memoryStore  *memory.Store
 	notifyClient *notify.Client
+
+	// Compare
+	compareSessions   map[string]*compare.CompareSession
+	compareMu         sync.Mutex
+	compareIDCounter  int
 }
 
 // RateLimiter simple para prevenir abusos.
@@ -85,6 +91,9 @@ func NewServer(port int, workspacePath string) *Server {
 		searchClient: search.NewClient(),
 		memoryStore:  memory.NewStore(),
 		notifyClient: notify.NewClient(),
+
+		// Compare
+		compareSessions: make(map[string]*compare.CompareSession),
 	}
 	s.routes()
 	logInit()
@@ -124,6 +133,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/memory", cors(s.requireAuth(s.rateLimitMiddleware(s.handleMemory))))
 	s.mux.HandleFunc("/api/memory/decisions", cors(s.requireAuth(s.rateLimitMiddleware(s.handleMemoryDecisions))))
 	s.mux.HandleFunc("/api/notify/test", cors(s.requireAuth(s.rateLimitMiddleware(s.handleNotifyTest))))
+
+	// Compare
+	s.mux.HandleFunc("/api/compare", cors(s.requireAuth(s.rateLimitMiddleware(s.handleCompare))))
+	s.mux.HandleFunc("/api/compare/", cors(s.requireAuth(s.rateLimitMiddleware(s.handleCompareByID))))
 
 	// Static files (SPA) — sin auth para que funcione el frontend
 	s.mux.HandleFunc("/", s.handleStatic)

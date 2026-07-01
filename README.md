@@ -25,36 +25,54 @@
 
 ## 📦 Instalación
 
-### Prerrequisitos
+> **Filosofía:** Mínimos pasos para el usuario. Todo automatizado. Solo lo crucial es manual (API keys, configuración personal).
 
-| Dependencia | Versión | Instalación |
-|---|---|---|
-| **tmux** | ≥ 3.3 | `brew install tmux` (macOS) / `sudo apt install tmux` (Linux) |
-| **git** | ≥ 2.5 | `brew install git` / `sudo apt install git` |
-| **Go** | ≥ 1.21 | `go version` para verificar |
+### 🐳 Opción 1: Docker (recomendado — 0 configuración)
 
-### Instalar Amuxasi
+**Un solo comando y ya está corriendo:**
 
 ```bash
-# Opción 1: Go install (recomendado)
-# Opción 1: Go install (recomendado — CLI + Web)
-go install github.com/kraken545/amuxasi/cmd/amuxasi@latest
-
-# Instalar TUI (requiere TTY)
-go install github.com/kraken545/amuxasi/cmd/amuxasi-tui@latest
-
-# Opción 2: Clonar y compilar
 git clone https://github.com/kraken545/amuxasi.git
 cd amuxasi
-go install ./cmd/amuxasi/...
-go install ./cmd/amuxasi-tui/...
+docker compose up -d
+# → http://localhost:7000
+```
 
-# Verificar instalación
+Para especificar API keys (opcional, solo si usas agentes cloud):
+
+```bash
+ANTHROPIC_API_KEY="sk-ant-..." docker compose up -d
+# o edita docker-compose.yml y agrega tus keys
+```
+
+El contenedor incluye tmux y git, necesarios para los agentes.
+
+### Construir la imagen manualmente
+
+```bash
+docker build -t amuxasi .
+docker run -d --name amuxasi -p 7000:7000 \
+  -v /ruta/de/tu/proyecto:/workspace \
+  amuxasi
+```
+
+### 📦 Opción 2: Go install (CLI nativa)
+
+Requiere Go ≥ 1.21 y tmux ≥ 3.3 instalados en tu sistema.
+
+```bash
+# CLI + Web
+go install github.com/kraken545/amuxasi/cmd/amuxasi@latest
+
+# TUI (requiere terminal interactiva)
+go install github.com/kraken545/amuxasi/cmd/amuxasi-tui@latest
+
+# Verificar
 amuxasi version
 # → amuxasi v0.2.0
 ```
 
-### Compilar desde código fuente
+### 🔧 Opción 3: Compilar desde fuente
 
 ```bash
 git clone https://github.com/kraken545/amuxasi.git
@@ -68,34 +86,29 @@ sudo mv amuxasi amuxasi-tui /usr/local/bin/
 
 ## 🚀 Primeros pasos
 
-### 1. Inicializar en tu proyecto
+### ⚡ La forma más rápida (recomendada)
 
 ```bash
+git clone https://github.com/kraken545/amuxasi.git
+cd amuxasi
+docker compose up -d
+# Abre http://localhost:7000 — 🎉 listo
+```
+
+Sin instalar nada más que Docker.
+
+### 🖥️ Usar el dashboard TUI (terminal)
+
+```bash
+# 1. Inicializar en tu proyecto
 cd /ruta/de/tu/proyecto
-
-# Si es un repo git:
 amuxasi init
-# → Creado amuxasi.toml en /ruta/de/tu/proyecto
 
-# Si NO es un repo git (funciona igual):
-amuxasi init
-# → Creado amuxasi.toml en /ruta/de/tu/proyecto
-```
-
-### 2. Abrir el dashboard
-
-```bash
+# 2. Abrir el dashboard
 amuxasi
-# o
-amuxasi open
+
+# 3. Presiona 'l' para lanzar un agente
 ```
-
-### 3. Lanzar un agente
-
-1. Selecciona un agente con `↑/↓` o `Tab`
-2. Presiona `l` para lanzarlo
-3. Verás `●` verde cuando esté corriendo en su sesión tmux
-4. Presiona `a` para adjuntarte a la sesión tmux (`Ctrl+B d` para volver)
 
 ---
 
@@ -522,30 +535,51 @@ Dentro del dashboard, presiona `Ctrl+L` para ver los logs en vivo.
 
 ## 🌐 Web UI
 
-Amuxasi incluye una Web UI estilo Odysseus (inspirada en PewDiePie) con panel de control, chat multi-agente, debate, y configuración.
+Amuxasi incluye una Web UI estilo Odysseus (inspirada en PewDiePie) con panel de control, chat multi-agente, debate, y configuración. Todo en una SPA vanilla (sin React/Vue) incrustada en el binario Go via `embed.FS`.
 
-### Usar desde tu máquina
+### 🐳 Usar con Docker (automático)
+
+```bash
+# Un comando y ya:
+docker compose up -d
+# → http://localhost:7000
+
+# Con API keys (opcional):
+ANTHROPIC_API_KEY="sk-ant-..." docker compose up -d
+
+# Ver logs:
+docker compose logs -f
+
+# Detener:
+docker compose down
+```
+
+### Construir la imagen manualmente
+
+```bash
+make docker-build
+# o directamente:
+docker build -t amuxasi .
+```
+
+### 🖥️ Usar desde tu máquina (sin Docker)
 
 ```bash
 amuxasi web
 # → http://localhost:7000
+
+# Puerto personalizado:
+amuxasi web --port 8080
 ```
-
-### Usar con Docker
-
-```bash
-docker compose up
-# → http://localhost:7000
-```
-
-Las API keys se pasan como variables de entorno en `docker-compose.yml`.
 
 ### Estructura del frontend
 
-El frontend es una SPA vanilla (sin React/Vue) incrustada en el binario Go via `embed.FS`:
-- `web/static/index.html` — Punto de entrada
-- `web/static/style.css` — Tema oscuro Odysseus (CSS variables, Fira Code)
-- `web/static/js/app.js` — Lógica: routing, API calls, polling, themes
+```
+web/static/
+├── index.html    # Punto de entrada SPA
+├── style.css     # Tema oscuro Odysseus (CSS variables, Fira Code)
+└── js/app.js     # Lógica: routing, API calls, polling, themes
+```
 
 ### API REST
 
@@ -634,7 +668,8 @@ amuxasi/
 │   ├── styles.go        # Tema retro terminal
 │   └── keys.go          # Definición de atajos
 ├── Dockerfile           # Multi-stage build (web server)
-└── docker-compose.yml   # Docker Compose (web UI)
+├── docker-compose.yml   # Docker Compose (web UI)
+└── Makefile             # Automatización: make docker-up, make build, etc.
 ```
 
 ---

@@ -120,6 +120,8 @@ func (s *Server) collectAgentStatus(ws *workspace.Manager) []map[string]interfac
 // ---- Agent Actions ----
 
 func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
+	log.Info("agent action: %s %s", r.Method, r.URL.Path)
+
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/agents/"), "/")
 	if len(parts) < 1 {
 		jsonErr(w, 400, "agent name required")
@@ -131,8 +133,11 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 		action = parts[1]
 	}
 
+	log.Info("agent action parsed: name=%s action=%s", agentName, action)
+
 	ws, err := workspace.Open(s.workspace)
 	if err != nil {
+		log.Error("workspace open error: %v", err)
 		jsonErr(w, 500, fmt.Sprintf("workspace: %v", err))
 		return
 	}
@@ -142,8 +147,10 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		// Check if it's a detected agent
 		detected := agent.DetectAgents()
+		log.Info("agent %s not in config, checking %d detected agents", agentName, len(detected))
 		found := false
 		for _, d := range detected {
+			log.Info("  detected: %s -> %s", d.Name, d.Command)
 			if d.Name == agentName {
 				cfg = config.AgentConfig{Command: d.Command}
 				found = true
@@ -151,19 +158,25 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !found {
-			jsonErr(w, 404, fmt.Sprintf("agent %s not found", agentName))
+			log.Error("agent %s not found in config or detected", agentName)
+			jsonErr(w, 404, fmt.Sprintf("agent %s not found in config or system", agentName))
 			return
 		}
 	}
+
+	log.Info("agent config: %s -> command=%s args=%v env=%v", agentName, cfg.Command, cfg.Args, cfg.Env)
 
 	a := agent.New(agentName, cfg.Command, ws.Cfg.Workspace.Name, cfg.Args, cfg.Env)
 
 	switch action {
 	case "launch":
+		log.Info("launching agent %s (command: %s)", agentName, cfg.Command)
 		if err := a.Launch(); err != nil {
+			log.Error("launch agent %s failed: %v", agentName, err)
 			jsonErr(w, 500, err.Error())
 			return
 		}
+		log.Info("agent %s launched successfully, session: %s", agentName, a.Session)
 		// Notificar
 		go s.notifyAgentEvent(agentName, "launch")
 		jsonResp(w, map[string]string{"status": "launched", "name": agentName, "session": a.Session})

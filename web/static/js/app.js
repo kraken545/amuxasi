@@ -55,14 +55,32 @@ const API = {
   },
 };
 
+let authPromptActive = false;
+
 function promptAuth() {
+  if (authPromptActive) return; // evitar múltiples prompts simultáneos
+  authPromptActive = true;
+
   const existing = getAuthToken();
   const token = prompt('🔐 Amuxasi requiere autenticación\nIngresa el token (AMUXASI_TOKEN):', existing);
-  if (token !== null) {
-    setAuthToken(token.trim());
-    toast('Token guardado — recargando...');
-    setTimeout(() => location.reload(), 500);
+
+  authPromptActive = false;
+
+  if (token === null) {
+    // Usuario canceló o presionó Escape — no hacer nada
+    return;
   }
+
+  const trimmed = token.trim();
+  if (!trimmed) {
+    // Token vacío — mostrar toast y salir
+    toast('Token vacío — la autenticación seguirá fallando');
+    return;
+  }
+
+  setAuthToken(trimmed);
+  toast('🔑 Token guardado — recargando...');
+  setTimeout(() => location.reload(), 500);
 }
 
 // ---- Navigation ----
@@ -147,17 +165,26 @@ function statusDot(status) {
 
 // Agent actions from dashboard
 async function agentAction(name, action) {
+  const btn = document.querySelector(`button[onclick*="agentAction('${name}','${action}')"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = action === 'launch' ? '⏳ Launching...' : '⏳ Stopping...';
+  }
+
   try {
     if (action === 'attach') {
       toast(`To attach: tmux attach-session -t amuxasi-${name}`);
+      if (btn) { btn.disabled = false; btn.textContent = 'Attach'; }
       return;
     }
     const res = await API.post(`/agents/${name}/${action}`);
-    toast(`${name}: ${res.status}`);
+    toast(`✅ ${name}: ${res.status}`);
     loadDashboard();
     loadAgentsList();
   } catch (err) {
-    toast(`Error: ${err.message}`);
+    toast(`❌ ${name}: ${err.message}`);
+    console.error(`Agent action error (${name}/${action}):`, err);
+    if (btn) { btn.disabled = false; btn.textContent = action === 'launch' ? 'Launch' : 'Stop'; }
   }
 }
 
@@ -852,35 +879,38 @@ let wasDown = false;
 
 async function checkHealth() {
   try {
-    const res = await fetch('/api/health');
+    const res = await fetch('/api/health', { headers: { ...authHeaders() } });
     if (res.ok) {
       if (wasDown) {
-        // El servidor se recuperó de una caída
         toast('🔄 Servidor reconectado');
-        // Recargar datos completos
         loadDashboard();
         loadAgentsList();
         loadKeys();
         loadConfig();
-        document.getElementById('connection-status').textContent = 'Connected';
-        document.getElementById('connection-status').className = 'status-ok';
       }
       wasDown = false;
       lastHealthOk = true;
+      document.getElementById('connection-status').textContent = 'Connected';
+      document.getElementById('connection-status').className = 'status-ok';
       document.getElementById('status-indicator').className = 'dot running';
+    } else if (res.status === 401) {
+      // Auth required pero no tenemos token
+      if (lastHealthOk && !getAuthToken()) {
+        promptAuth();
+      }
+      lastHealthOk = false;
     } else {
-      throw new Error('Health check failed');
+      throw new Error('Health check failed: ' + res.status);
     }
   } catch (err) {
     if (lastHealthOk) {
-      // Primera vez que falla
       wasDown = true;
       toast('⚠️ Conexión perdida — reintentando...');
-      document.getElementById('connection-status').textContent = 'Disconnected';
-      document.getElementById('connection-status').className = 'status-err';
     }
     lastHealthOk = false;
     document.getElementById('status-indicator').className = 'dot stopped';
+    document.getElementById('connection-status').textContent = 'Disconnected';
+    document.getElementById('connection-status').className = 'status-err';
   }
 }
 

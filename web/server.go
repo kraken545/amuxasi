@@ -124,7 +124,9 @@ func logInit() {
 
 func (s *Server) routes() {
 	// API — protegidas con rate limit + auth + CORS
-	s.mux.HandleFunc("/api/health", cors(s.requireAuth(s.rateLimitMiddleware(s.handleHealth))))
+	// Health endpoint NO requiere auth para que funcione HEALTHCHECK de Docker
+	// y el monitor de conexión del frontend.
+	s.mux.HandleFunc("/api/health", cors(s.rateLimitMiddleware(s.handleHealth)))
 	s.mux.HandleFunc("/api/status", cors(s.requireAuth(s.rateLimitMiddleware(s.handleStatus))))
 	s.mux.HandleFunc("/api/workspace", cors(s.requireAuth(s.rateLimitMiddleware(s.handleWorkspace))))
 	s.mux.HandleFunc("/api/agents", cors(s.requireAuth(s.rateLimitMiddleware(s.handleAgents))))

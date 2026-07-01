@@ -19,16 +19,18 @@ type Manager struct {
 	Cfg      *config.Config
 }
 
+// FindRepoRoot busca la raíz del repo git. Si no hay, devuelve string vacío (no falla).
 func FindRepoRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	dir, err = findGitRoot(dir)
+	root, err := findGitRoot(dir)
 	if err != nil {
-		return "", fmt.Errorf("not in a git repository: %w", err)
+		// No es un repo git — modo no-Git, devolvemos el dir actual
+		return dir, nil
 	}
-	return dir, nil
+	return root, nil
 }
 
 func findGitRoot(dir string) (string, error) {
@@ -39,6 +41,12 @@ func findGitRoot(dir string) (string, error) {
 		return "", fmt.Errorf("git rev-parse: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// IsGitRepo verifica si el directorio actual pertenece a un repo git.
+func IsGitRepo() bool {
+	_, err := findGitRoot(".")
+	return err == nil
 }
 
 func Open(repoRoot string) (*Manager, error) {
@@ -63,12 +71,37 @@ func Open(repoRoot string) (*Manager, error) {
 }
 
 func Init(repoRoot string) error {
+	return InitWithAgents(repoRoot, nil)
+}
+
+// InitWithAgents crea amuxasi.toml, scripts por defecto, y opcionalmente incluye agentes.
+func InitWithAgents(repoRoot string, selectedAgents []string) error {
 	cfgPath := filepath.Join(repoRoot, ConfigFile)
 	if config.Exists(cfgPath) {
 		return fmt.Errorf("%s already exists in %s", ConfigFile, repoRoot)
 	}
+
 	cfg := config.DefaultConfig()
 	cfg.Workspace.Name = filepath.Base(repoRoot)
+
+	// Si se seleccionaron agentes, filtrar el config para incluir solo esos
+	if len(selectedAgents) > 0 {
+		filtered := make(map[string]config.AgentConfig)
+		for _, name := range selectedAgents {
+			if a, ok := cfg.Agents[name]; ok {
+				filtered[name] = a
+			} else {
+				// Agregar agente detectado no incluido en defaults
+				filtered[name] = config.AgentConfig{
+					Command: name,
+					Args:    []string{},
+				}
+			}
+		}
+		cfg.Agents = filtered
+		cfg.Launch = selectedAgents
+	}
+
 	f, err := os.Create(cfgPath)
 	if err != nil {
 		return fmt.Errorf("create config: %w", err)
@@ -79,10 +112,61 @@ func Init(repoRoot string) error {
 		return fmt.Errorf("encode config: %w", err)
 	}
 	fmt.Printf("Created %s in %s\n", ConfigFile, repoRoot)
+
+	// Crear scripts por defecto
+	if err := createDefaultScripts(repoRoot); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not create default scripts: %v\n", err)
+	}
+
+	return nil
+}
+
+// createDefaultScripts crea scripts/setup.sh y scripts/archive.sh si no existen.
+func createDefaultScripts(repoRoot string) error {
+	scriptsDir := filepath.Join(repoRoot, "scripts")
+	if err := os.MkdirAll(scriptsDir, 0755); err != nil {
+		return fmt.Errorf("create scripts dir: %w", err)
+	}
+
+	scripts := map[string]string{
+		"setup.sh": `#!/bin/sh
+# Amuxasi — Script de setup
+# Se ejecuta al presionar 'S' en el dashboard.
+# Agrega aquí comandos de inicialización (npm install, pip install, etc.)
+echo "📦 Amuxasi setup — $(date)"
+# Ejemplo:
+# npm install
+# pip install -r requirements.txt
+`,
+		"archive.sh": `#!/bin/sh
+# Amuxasi — Script de archive
+# Se ejecuta al presionar 'A' en el dashboard.
+# Agrega aquí comandos de limpieza o respaldo.
+echo "📦 Amuxasi archive — $(date)"
+# Ejemplo:
+# tar -czf backup-$(date +%Y%m%d).tar.gz ./src
+`,
+	}
+
+	for name, content := range scripts {
+		path := filepath.Join(scriptsDir, name)
+		if _, err := os.Stat(path); err == nil {
+			continue // ya existe, no sobrescribir
+		}
+		if err := os.WriteFile(path, []byte(content), 0755); err != nil {
+			return fmt.Errorf("create %s: %w", name, err)
+		}
+		fmt.Printf("Created scripts/%s\n", name)
+	}
+
 	return nil
 }
 
 func (m *Manager) AddWorktree(path, branch string) error {
+	if !IsGitRepo() {
+		return fmt.Errorf("worktrees requieren un repositorio git")
+	}
+
 	args := []string{"worktree", "add"}
 	if branch != "" {
 		args = append(args, "-b", branch)

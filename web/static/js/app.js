@@ -319,6 +319,58 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// ---- Health / Connection Monitor ----
+let lastHealthOk = true;
+let wasDown = false;
+
+async function checkHealth() {
+  try {
+    const res = await fetch('/api/health');
+    if (res.ok) {
+      if (wasDown) {
+        // El servidor se recuperó de una caída
+        toast('🔄 Servidor reconectado');
+        // Recargar datos completos
+        loadDashboard();
+        loadAgentsList();
+        loadKeys();
+        loadConfig();
+        document.getElementById('connection-status').textContent = 'Connected';
+        document.getElementById('connection-status').className = 'status-ok';
+      }
+      wasDown = false;
+      lastHealthOk = true;
+      document.getElementById('status-indicator').className = 'dot running';
+    } else {
+      throw new Error('Health check failed');
+    }
+  } catch (err) {
+    if (lastHealthOk) {
+      // Primera vez que falla
+      wasDown = true;
+      toast('⚠️ Conexión perdida — reintentando...');
+      document.getElementById('connection-status').textContent = 'Disconnected';
+      document.getElementById('connection-status').className = 'status-err';
+    }
+    lastHealthOk = false;
+    document.getElementById('status-indicator').className = 'dot stopped';
+  }
+}
+
+// ---- Connection Status in Nav ----
+// Add connection status element after ws-name
+document.addEventListener('DOMContentLoaded', () => {
+  const statusEl = document.querySelector('.nav-status');
+  if (statusEl && !document.getElementById('connection-status')) {
+    const conn = document.createElement('span');
+    conn.id = 'connection-status';
+    conn.className = 'status-ok';
+    conn.textContent = 'Connected';
+    conn.style.cssText = 'font-size:11px;color:var(--muted);margin-left:8px;';
+    statusEl.appendChild(conn);
+  }
+});
+
 // ---- Polling ----
 let pollInterval;
 
@@ -327,9 +379,11 @@ function startPolling() {
   loadAgentsList();
   loadKeys();
   loadConfig();
+  checkHealth();
   pollInterval = setInterval(() => {
     loadDashboard();
     loadAgentsList();
+    checkHealth();
   }, 3000);
 }
 

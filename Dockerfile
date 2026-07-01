@@ -9,7 +9,7 @@ RUN CGO_ENABLED=0 go build -o amuxasi-web ./cmd/web
 
 # Runtime stage
 FROM alpine:3.20
-RUN apk add --no-cache tmux git ca-certificates
+RUN apk add --no-cache tmux git ca-certificates curl
 
 # Create amuxasi user and pre-create data directories
 RUN adduser -D -h /home/amuxasi amuxasi \
@@ -27,6 +27,10 @@ EXPOSE 7000
 
 ENV AMUXASI_PORT=7000
 ENV AMUXASI_WORKSPACE=/workspace
+
+# Healthcheck: verifica que la Web UI responda cada 30s
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD curl -f http://localhost:7000/api/health || exit 1
 
 VOLUME ["/workspace", "/home/amuxasi/.config/amuxasi", "/home/amuxasi/.cache/amuxasi"]
 

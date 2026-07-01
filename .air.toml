@@ -1,0 +1,35 @@
+# Amuxasi — Configuración de Air (hot-reload)
+# https://github.com/air-verse/air
+# Instalar: go install github.com/air-verse/air@latest
+# Usar: make dev
+
+root = "."
+tmp_dir = "/tmp/amuxasi-air"
+
+[build]
+  cmd = "go build -o /tmp/amuxasi-air/amuxasi-web ./cmd/web"
+  bin = "/tmp/amuxasi-air/amuxasi-web"
+  delay = 500
+  exclude_dir = ["assets", "tmp", "vendor", "node_modules"]
+  exclude_file = []
+  exclude_regex = ["_test\\.go"]
+  exclude_unchanged = true
+  follow_symlink = false
+  full_bin = ""
+  include_dir = []
+  include_ext = ["go", "html", "css", "js"]
+  kill_delay = "0s"
+  log = "build-errors.log"
+  send_interrupt = false
+  stop_on_error = true
+
+[color]
+  app = ""
+  build = "yellow"
+  main = "green"
+  runner = "cyan"
+  watcher = "magenta"
+
+[log]
+  main_only = false
+  time = false

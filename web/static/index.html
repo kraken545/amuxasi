@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amuxasi — Multi-Agent Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4L16 22L6 22Z' fill='%2300FF41'/%3E%3Cpath d='M16 8L16 22L24 22Z' fill='%2300FF41' opacity='0.6'/%3E%3Cpath d='M4 24Q10 20 16 24Q22 28 28 24' stroke='%2300FF41' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- NAV -->
+  <nav id="topnav">
+    <div class="nav-brand">
+      <svg class="logo-icon" viewBox="0 0 32 32" width="22" height="22"><path d="M16 4L16 22L6 22Z" fill="#00FF41"/><path d="M16 8L16 22L24 22Z" fill="#00FF41" opacity="0.6"/><path d="M4 24Q10 20 16 24Q22 28 28 24" stroke="#00FF41" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
+      <span class="wordmark">Amuxasi</span>
+    </div>
+    <div class="nav-status">
+      <span id="status-indicator" class="dot running"></span>
+      <span id="ws-name" class="ws-name">workspace</span>
+    </div>
+    <div class="nav-actions">
+      <button id="btn-theme" class="icon-btn" title="Toggle theme">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <div id="app">
+    <!-- SIDEBAR -->
+    <aside id="sidebar">
+      <nav id="side-nav">
+        <a class="nav-item active" data-section="dashboard" href="#dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Dashboard
+        </a>
+        <a class="nav-item" data-section="chat" href="#chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Chat
+        </a>
+        <a class="nav-item" data-section="debate" href="#debate">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Debate
+        </a>
+        <a class="nav-item" data-section="agents" href="#agents">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+          Agents
+        </a>
+        <a class="nav-item" data-section="settings" href="#settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          Settings
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <a class="nav-item" data-section="help" href="#help">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+          Help
+        </a>
+        <div class="version">v0.2.0</div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main id="content">
+      <!-- Dashboard -->
+      <section id="section-dashboard" class="section active">
+        <div class="section-header">
+          <h1>Dashboard</h1>
+          <div class="header-actions">
+            <button class="btn" onclick="location.reload()">Refresh</button>
+          </div>
+        </div>
+        <div class="grid cards">
+          <div class="card stat-card" id="card-agents">
+            <div class="stat-value" id="stat-agents">0</div>
+            <div class="stat-label">Agents</div>
+          </div>
+          <div class="card stat-card" id="card-running">
+            <div class="stat-value" id="stat-running">0</div>
+            <div class="stat-label">Running</div>
+          </div>
+          <div class="card stat-card" id="card-detected">
+            <div class="stat-value" id="stat-detected">0</div>
+            <div class="stat-label">Detected</div>
+          </div>
+          <div class="card stat-card" id="card-tmux">
+            <div class="stat-value" id="stat-tmux">✓</div>
+            <div class="stat-label">tmux</div>
+          </div>
+        </div>
+        <div class="card" id="agent-list-card">
+          <h3>Agents</h3>
+          <div id="agent-table">
+            <div class="table-placeholder">Loading agents...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Chat -->
+      <section id="section-chat" class="section">
+        <div class="section-header">
+          <h1>Chat</h1>
+          <div class="header-actions">
+            <button class="btn" onclick="clearChat()">Clear</button>
+          </div>
+        </div>
+        <div class="chat-container">
+          <div id="chat-messages" class="chat-messages">
+            <div class="chat-placeholder">Select an agent or start a conversation.</div>
+          </div>
+          <div class="chat-input-area">
+            <textarea id="chat-input" rows="3" placeholder="Type a message... (Enter to send, Shift+Enter for new line)"></textarea>
+            <button id="chat-send" class="btn primary" onclick="sendChat()">Send</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Debate -->
+      <section id="section-debate" class="section">
+        <div class="section-header">
+          <h1>Debate</h1>
+          <div class="header-actions">
+            <button class="btn" onclick="startDebate()">Start Debate</button>
+            <button class="btn danger" onclick="stopDebate()">Stop</button>
+          </div>
+        </div>
+        <div class="debate-layout">
+          <div class="debate-agents card">
+            <h3>Participants</h3>
+            <div id="debate-participants">No active debate.</div>
+          </div>
+          <div class="debate-chat card">
+            <h3>Discussion</h3>
+            <div id="debate-messages" class="debate-messages">
+              <div class="chat-placeholder">Press "Start Debate" to begin.</div>
+            </div>
+          </div>
+          <div class="debate-consensus card">
+            <h3>Consensus</h3>
+            <div id="consensus-meter">
+              <div class="consensus-bar-bg">
+                <div id="consensus-fill" class="consensus-fill" style="width:0%"></div>
+              </div>
+              <div id="consensus-text">0% agreement</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Agents -->
+      <section id="section-agents" class="section">
+        <div class="section-header">
+          <h1>Agents</h1>
+          <div class="header-actions">
+            <button class="btn" onclick="scanAgents()">Scan</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Configured Agents</h3>
+          <div id="agent-list-detailed"></div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <h3>Detected on System</h3>
+          <div id="detected-agents-list"></div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section id="section-settings" class="section">
+        <div class="section-header">
+          <h1>Settings</h1>
+        </div>
+        <div class="settings-tabs">
+          <button class="setting-tab active" data-tab="keys">API Keys</button>
+          <button class="setting-tab" data-tab="config">Config</button>
+          <button class="setting-tab" data-tab="theme">Theme</button>
+          <button class="setting-tab" data-tab="about">About</button>
+        </div>
+        <div class="settings-content">
+          <!-- API Keys -->
+          <div id="settings-keys" class="setting-panel active">
+            <p class="setting-desc">API keys are read from environment variables. Amuxasi never stores or sends them anywhere.</p>
+            <div id="keys-list">Loading...</div>
+          </div>
+
+          <!-- Config -->
+          <div id="settings-config" class="setting-panel">
+            <h3>amuxasi.toml</h3>
+            <textarea id="config-editor" rows="20" class="code-input" readonly>Loading...</textarea>
+            <button class="btn" style="margin-top:8px;" onclick="saveConfig()">Save</button>
+          </div>
+
+          <!-- Theme -->
+          <div id="settings-theme" class="setting-panel">
+            <h3>Theme</h3>
+            <div class="theme-options">
+              <div class="theme-option active" data-theme="dark-odysseus">
+                <div class="theme-preview" style="background:#282c34;border-color:#355a66;"></div>
+                <span>Dark (Odysseus)</span>
+              </div>
+              <div class="theme-option" data-theme="dark-retro">
+                <div class="theme-preview" style="background:#0a0a0a;border-color:#00FF41;"></div>
+                <span>Retro Terminal</span>
+              </div>
+              <div class="theme-option" data-theme="light">
+                <div class="theme-preview" style="background:#f8f8f2;border-color:#6272a4;"></div>
+                <span>Light</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- About -->
+          <div id="settings-about" class="setting-panel">
+            <h3>Amuxasi v0.2.0</h3>
+            <p>Multi-Agent Coding Dashboard</p>
+            <p>Self-hosted · Privacy-first · No telemetry</p>
+            <p>Inspired by <a href="https://github.com/pewdiepie-archdaemon/odysseus" target="_blank">Odysseus</a></p>
+            <p><a href="https://github.com/kraken545/amuxasi" target="_blank">GitHub</a></p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

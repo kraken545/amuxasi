@@ -1,6 +1,8 @@
 # Binarios
 /amuxasi
+/amuxasi-tui
 amuxasi.exe
+amuxasi-tui.exe
 *.exe
 
 # Logs

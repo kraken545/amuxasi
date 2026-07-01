@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  amuxasi:
+    build: .
+    container_name: amuxasi
+    ports:
+      - "7000:7000"
+    environment:
+      - AMUXASI_PORT=7000
+      - AMUXASI_WORKSPACE=/workspace
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    volumes:
+      # Mount your project repo to /workspace
+      - .:/workspace
+      # Persist config and cache
+      - amuxasi-config:/home/amuxasi/.config/amuxasi
+      - amuxasi-cache:/home/amuxasi/.cache/amuxasi
+      # Docker socket for running agents in containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+volumes:
+  amuxasi-config:
+  amuxasi-cache:

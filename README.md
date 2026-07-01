@@ -37,12 +37,17 @@
 
 ```bash
 # Opción 1: Go install (recomendado)
-go install github.com/kraken545/amuxasi@latest
+# Opción 1: Go install (recomendado — CLI + Web)
+go install github.com/kraken545/amuxasi/cmd/amuxasi@latest
+
+# Instalar TUI (requiere TTY)
+go install github.com/kraken545/amuxasi/cmd/amuxasi-tui@latest
 
 # Opción 2: Clonar y compilar
 git clone https://github.com/kraken545/amuxasi.git
 cd amuxasi
-go install .
+go install ./cmd/amuxasi/...
+go install ./cmd/amuxasi-tui/...
 
 # Verificar instalación
 amuxasi version
@@ -54,10 +59,9 @@ amuxasi version
 ```bash
 git clone https://github.com/kraken545/amuxasi.git
 cd amuxasi
-go build -o amuxasi .
-sudo mv amuxasi /usr/local/bin/  # Linux
-# o simplemente
-mv amuxasi /usr/local/bin/
+go build -o amuxasi ./cmd/amuxasi/
+go build -o amuxasi-tui ./cmd/amuxasi-tui/
+sudo mv amuxasi amuxasi-tui /usr/local/bin/
 ```
 
 ---
@@ -467,8 +471,8 @@ Esto crea:
 
 | Comando | Descripción |
 |---|---|
-| `amuxasi` | Abre el dashboard en el directorio actual |
-| `amuxasi open` | Ídem (alias) |
+| `amuxasi` | Abre el dashboard TUI (requiere `amuxasi-tui`) |
+| `amuxasi web` | Inicia la Web UI en http://localhost:7000 |
 | `amuxasi init` | Crea `amuxasi.toml` en el directorio actual |
 | `amuxasi add-worktree <path> [branch]` | Crea git worktree + configuración |
 | `amuxasi archive` | Archiva el workspace actual |
@@ -516,6 +520,51 @@ Dentro del dashboard, presiona `Ctrl+L` para ver los logs en vivo.
 
 ---
 
+## 🌐 Web UI
+
+Amuxasi incluye una Web UI estilo Odysseus (inspirada en PewDiePie) con panel de control, chat multi-agente, debate, y configuración.
+
+### Usar desde tu máquina
+
+```bash
+amuxasi web
+# → http://localhost:7000
+```
+
+### Usar con Docker
+
+```bash
+docker compose up
+# → http://localhost:7000
+```
+
+Las API keys se pasan como variables de entorno en `docker-compose.yml`.
+
+### Estructura del frontend
+
+El frontend es una SPA vanilla (sin React/Vue) incrustada en el binario Go via `embed.FS`:
+- `web/static/index.html` — Punto de entrada
+- `web/static/style.css` — Tema oscuro Odysseus (CSS variables, Fira Code)
+- `web/static/js/app.js` — Lógica: routing, API calls, polling, themes
+
+### API REST
+
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/health` | GET | Health check |
+| `/api/status` | GET | Estado completo del sistema |
+| `/api/agents` | GET | Lista de agentes |
+| `/api/agents/launch` | POST | Lanzar agente |
+| `/api/agents/stop` | POST | Detener agente |
+| `/api/workspace` | GET | Info del workspace |
+| `/api/debate` | GET/POST | Debate multi-agente |
+| `/api/debate/message` | POST | Enviar mensaje al debate |
+| `/api/keys` | GET | Muestra las variables de entorno disponibles |
+| `/api/config` | GET | Configuración actual |
+| `/api/logs` | GET | Logs en vivo |
+
+---
+
 ## ⚙️ Solución de problemas
 
 | Problema | Causa | Solución |
@@ -536,8 +585,10 @@ Dentro del dashboard, presiona `Ctrl+L` para ver los logs en vivo.
 git clone https://github.com/kraken545/amuxasi.git
 cd amuxasi
 
-# Compilar
-go build .
+# Compilar (todos los binarios)
+go build ./cmd/amuxasi/
+go build ./cmd/amuxasi-tui/
+go build ./cmd/web/
 
 # Tests
 go test ./...
@@ -546,14 +597,22 @@ go test ./...
 go vet ./...
 
 # Instalar localmente
-go install .
+go install ./cmd/amuxasi/...
+go install ./cmd/amuxasi-tui/...
 ```
 
 ### Estructura del proyecto
 
 ```
 amuxasi/
-├── main.go              # Punto de entrada
+├── main.go              # Punto de entrada (thin wrapper)
+├── cmd/
+│   ├── amuxasi/         # CLI principal (init, web, add-worktree, etc.)
+│   │   └── main.go
+│   ├── amuxasi-tui/     # Dashboard TUI (Bubble Tea)
+│   │   └── main.go
+│   └── web/             # Web server (Docker)
+│       └── main.go
 ├── config/config.go     # Parseo de amuxasi.toml
 ├── agent/
 │   ├── agent.go         # Ciclo de vida de agentes
@@ -561,12 +620,21 @@ amuxasi/
 ├── trust/trust.go       # Sistema de aprobación SHA256
 ├── workspace/           # Gestión de workspaces y worktrees
 ├── log/log.go           # Logging estructurado
-└── tui/
-    ├── tui.go           # Modelo principal Bubble Tea
-    ├── chat.go          # Debate multi-agente
-    ├── sidebar.go       # Barra lateral con pestañas
-    ├── styles.go        # Tema retro terminal
-    └── keys.go          # Definición de atajos
+├── web/                 # Servidor HTTP + API REST
+│   ├── server.go        # Rutas, CORS, handler estático
+│   ├── handlers.go      # Handlers de API
+│   └── static/          # Frontend SPA
+│       ├── index.html
+│       ├── style.css
+│       └── js/app.js
+├── tui/
+│   ├── tui.go           # Modelo principal Bubble Tea
+│   ├── chat.go          # Debate multi-agente
+│   ├── sidebar.go       # Barra lateral con pestañas
+│   ├── styles.go        # Tema retro terminal
+│   └── keys.go          # Definición de atajos
+├── Dockerfile           # Multi-stage build (web server)
+└── docker-compose.yml   # Docker Compose (web UI)
 ```
 
 ---
@@ -585,7 +653,7 @@ amuxasi/
 | Medidor de consenso + donut | ✅ |
 | Sidebar con pestañas | ✅ |
 | API Keys (variables de entorno) | ✅ |
-| **Web UI** | 🟡 Planeado |
+| **Web UI** | ✅ Completado |
 | **Temas visuales intercambiables** | 🟡 Planeado |
 | **Editor visual de configuración** | 🟡 Planeado |
 | **Historial de sesiones** | 🔴 Futuro |

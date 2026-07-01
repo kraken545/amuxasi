@@ -10,6 +10,7 @@ import (
 
 	"github.com/amuxasi/amuxasi/agent"
 	"github.com/amuxasi/amuxasi/config"
+	"github.com/amuxasi/amuxasi/debate"
 	"github.com/amuxasi/amuxasi/log"
 	"github.com/amuxasi/amuxasi/workspace"
 )
@@ -196,7 +197,67 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 // ---- Debate ----
 
 func (s *Server) handleDebate(w http.ResponseWriter, r *http.Request) {
-	jsonResp(w, map[string]string{"status": "debate endpoint ready", "message": "Debate coming soon"})
+	s.debateMu.Lock()
+	defer s.debateMu.Unlock()
+
+	switch r.Method {
+	case "GET":
+		// GET /api/debate — devuelve estado completo
+		jsonResp(w, s.debate.SessionState())
+
+	case "POST":
+		// POST /api/debate — iniciar/detener debate
+		var body struct {
+			Action string `json:"action"` // "start" | "stop"
+			Topic  string `json:"topic,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			jsonErr(w, 400, "invalid JSON")
+			return
+		}
+
+		switch body.Action {
+		case "start":
+			if s.debate.Active {
+				jsonErr(w, 400, "Debate already active")
+				return
+			}
+			if body.Topic == "" {
+				body.Topic = "General discussion"
+			}
+			s.debate = debate.NewDebateSession(body.Topic)
+			// Add agents from config
+			ws, err := workspace.Open(s.workspace)
+			if err == nil {
+				for name := range ws.Cfg.Agents {
+					s.debate.AddOrUpdateAgent(name)
+				}
+			}
+			s.debate.Start()
+			jsonResp(w, map[string]interface{}{
+				"status": "started",
+				"topic":  body.Topic,
+				"state":  s.debate.SessionState(),
+			})
+
+		case "stop":
+			if !s.debate.Active {
+				jsonErr(w, 400, "No active debate")
+				return
+			}
+			s.debate.Stop()
+			jsonResp(w, map[string]interface{}{
+				"status": "stopped",
+				"state":  s.debate.SessionState(),
+			})
+
+		default:
+			jsonErr(w, 400, fmt.Sprintf("unknown action: %s", body.Action))
+		}
+
+	default:
+		jsonErr(w, 405, "method not allowed")
+	}
 }
 
 func (s *Server) handleDebateMessage(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +265,10 @@ func (s *Server) handleDebateMessage(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 405, "POST required")
 		return
 	}
+
+	s.debateMu.Lock()
+	defer s.debateMu.Unlock()
+
 	var body struct {
 		Message string `json:"message"`
 	}
@@ -211,7 +276,146 @@ func (s *Server) handleDebateMessage(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "invalid JSON")
 		return
 	}
-	jsonResp(w, map[string]string{"status": "received", "message": body.Message})
+
+	if body.Message == "" {
+		jsonErr(w, 400, "message is required")
+		return
+	}
+
+	// Add user message
+	s.debate.AddUserMsg(body.Message)
+
+	// If debate is active, simulate agent responses
+	if s.debate.Active {
+		for _, ac := range s.debate.AgentCtx {
+			response := fmt.Sprintf(
+				"Respondiendo a: \"%s\" desde %s (%s)...",
+				truncate(body.Message, 50),
+				ac.AgentName,
+				ac.Role.DisplayName(),
+			)
+			s.debate.AddAgentMsg(ac.AgentName, ac.Role, response)
+			s.debate.UpdateVote(ac.AgentName, randomVote(), randomCtx(ac.ContextPct), "Analizando...")
+		}
+	}
+
+	jsonResp(w, map[string]interface{}{
+		"status": "ok",
+		"state":  s.debate.SessionState(),
+	})
+}
+
+// ---- Vote ----
+
+func (s *Server) handleDebateVote(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		jsonErr(w, 405, "POST required")
+		return
+	}
+
+	s.debateMu.Lock()
+	defer s.debateMu.Unlock()
+
+	var body struct {
+		AgentName string `json:"agent_name"`
+		Vote      string `json:"vote"` // "agree" | "disagree" | "confused"
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonErr(w, 400, "invalid JSON")
+		return
+	}
+
+	vote := debate.VoteState(body.Vote)
+	switch vote {
+	case debate.VoteAgree, debate.VoteDisagree, debate.VoteConfused:
+		// valid
+	default:
+		jsonErr(w, 400, fmt.Sprintf("invalid vote: %s", body.Vote))
+		return
+	}
+
+	s.debate.UpdateVote(body.AgentName, vote, randomCtx(50), fmt.Sprintf("Votó: %s", vote.Symbol()))
+
+	jsonResp(w, map[string]interface{}{
+		"status": "voted",
+		"state":  s.debate.SessionState(),
+	})
+}
+
+// ---- Diagnostics ----
+
+func (s *Server) handleDebateDiagnostic(w http.ResponseWriter, r *http.Request) {
+	s.debateMu.Lock()
+	defer s.debateMu.Unlock()
+
+	switch r.Method {
+	case "GET":
+		if s.debate.Diagnostic == nil {
+			jsonResp(w, map[string]string{"status": "no_active_diagnostic"})
+			return
+		}
+		jsonResp(w, s.debate.Diagnostic)
+
+	case "POST":
+		var body struct {
+			AgentName string `json:"agent_name"`
+			Action    string `json:"action"` // "start" | "answer"
+			QID       int    `json:"q_id,omitempty"`
+			Answer    string `json:"answer,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			jsonErr(w, 400, "invalid JSON")
+			return
+		}
+
+		switch body.Action {
+		case "start":
+			s.debate.Diagnostic = debate.NewAgentDiagnostic(body.AgentName)
+			jsonResp(w, s.debate.Diagnostic)
+
+		case "answer":
+			if s.debate.Diagnostic == nil {
+				jsonErr(w, 400, "no active diagnostic")
+				return
+			}
+			s.debate.Diagnostic.AnswerQuestion(body.QID, body.Answer)
+			if s.debate.Diagnostic.Complete {
+				// Update agent context on completion
+				s.debate.UpdateVote(body.AgentName, debate.VoteAgree, 85, "Diagnóstico completado")
+			}
+			jsonResp(w, s.debate.Diagnostic)
+
+		default:
+			jsonErr(w, 400, fmt.Sprintf("unknown action: %s", body.Action))
+		}
+
+	default:
+		jsonErr(w, 405, "method not allowed")
+	}
+}
+
+// Helpers
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
+}
+
+func randomVote() debate.VoteState {
+	votes := []debate.VoteState{
+		debate.VoteAgree,
+		debate.VoteAgree,
+		debate.VoteAgree,
+		debate.VoteDisagree,
+		debate.VoteConfused,
+	}
+	return votes[os.Getpid()%len(votes)]
+}
+
+func randomCtx(base int) int {
+	return min(100, base+(os.Getpid()%20-10))
 }
 
 // ---- API Keys ----

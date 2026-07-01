@@ -9,15 +9,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+
+	"github.com/amuxasi/amuxasi/debate"
 )
 
 //go:embed static/*
 var staticFiles embed.FS
 
 type Server struct {
-	port      string
-	mux       *http.ServeMux
-	workspace string
+	port       string
+	mux        *http.ServeMux
+	workspace  string
+	debate     *debate.DebateSession
+	debateMu   sync.Mutex
 }
 
 func NewServer(port int, workspacePath string) *Server {
@@ -25,6 +30,7 @@ func NewServer(port int, workspacePath string) *Server {
 		port:      fmt.Sprintf(":%d", port),
 		mux:       http.NewServeMux(),
 		workspace: workspacePath,
+		debate:    debate.NewDebateSession(""),
 	}
 	s.routes()
 	return s
@@ -39,6 +45,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/agents/", cors(s.handleAgentAction))
 	s.mux.HandleFunc("/api/debate", cors(s.handleDebate))
 	s.mux.HandleFunc("/api/debate/message", cors(s.handleDebateMessage))
+	s.mux.HandleFunc("/api/debate/vote", cors(s.handleDebateVote))
+	s.mux.HandleFunc("/api/debate/diagnostic", cors(s.handleDebateDiagnostic))
 	s.mux.HandleFunc("/api/keys", cors(s.handleKeys))
 	s.mux.HandleFunc("/api/config", cors(s.handleConfig))
 	s.mux.HandleFunc("/api/logs", cors(s.handleLogs))

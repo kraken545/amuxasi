@@ -120,28 +120,32 @@
         <div class="section-header">
           <h1>Debate</h1>
           <div class="header-actions">
-            <button class="btn" onclick="startDebate()">Start Debate</button>
+            <button class="btn primary" onclick="startDebate()">Start Debate</button>
             <button class="btn danger" onclick="stopDebate()">Stop</button>
           </div>
+        </div>
+        <div id="debate-info" class="card" style="margin-bottom:12px;padding:8px 12px;font-size:13px;">
+          <strong>Tema:</strong> (sin debate activo)
         </div>
         <div class="debate-layout">
           <div class="debate-agents card">
             <h3>Participants</h3>
-            <div id="debate-participants">No active debate.</div>
+            <div id="debate-agents">No active debate.</div>
           </div>
           <div class="debate-chat card">
             <h3>Discussion</h3>
             <div id="debate-messages" class="debate-messages">
               <div class="chat-placeholder">Press "Start Debate" to begin.</div>
             </div>
+            <div class="chat-input-row" style="display:flex;gap:8px;margin-top:8px;">
+              <input id="debate-chat-input" type="text" placeholder="Send a message to the debate..." style="flex:1;">
+              <button class="btn primary" onclick="sendDebateMessage()">Send</button>
+            </div>
           </div>
           <div class="debate-consensus card">
             <h3>Consensus</h3>
-            <div id="consensus-meter">
-              <div class="consensus-bar-bg">
-                <div id="consensus-fill" class="consensus-fill" style="width:0%"></div>
-              </div>
-              <div id="consensus-text">0% agreement</div>
+            <div id="debate-consensus">
+              <div class="table-placeholder">No debate data.</div>
             </div>
           </div>
         </div>

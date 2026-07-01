@@ -3,7 +3,7 @@ services:
     build: .
     container_name: amuxasi
     ports:
-      - "7000:7000"
+      - "7001:7000"
     environment:
       - AMUXASI_PORT=7000
       - AMUXASI_WORKSPACE=/workspace

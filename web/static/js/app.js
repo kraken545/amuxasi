@@ -152,13 +152,24 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  const debateInput = document.getElementById('debate-chat-input');
+  if (debateInput) {
+    debateInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendDebateMessage();
+      }
+    });
+  }
 });
 
 // ---- Debate ----
 async function startDebate() {
+  const topic = prompt('Tema del debate:') || 'General discussion';
   try {
-    await API.post('/debate/start', {});
-    toast('Debate started');
+    const res = await API.post('/debate', { action: 'start', topic });
+    toast(`Debate started: ${topic}`);
+    renderDebateState(res.state);
     loadDebate();
   } catch (err) {
     toast(`Error: ${err.message}`);
@@ -167,8 +178,9 @@ async function startDebate() {
 
 async function stopDebate() {
   try {
-    await API.post('/debate/stop', {});
+    const res = await API.post('/debate', { action: 'stop' });
     toast('Debate stopped');
+    renderDebateState(res.state);
     loadDebate();
   } catch (err) {
     toast(`Error: ${err.message}`);
@@ -176,7 +188,121 @@ async function stopDebate() {
 }
 
 async function loadDebate() {
-  // Placeholder - debate will be fully implemented with the backend
+  try {
+    const state = await API.get('/debate');
+    renderDebateState(state);
+  } catch (err) {
+    console.error('Debate load error:', err);
+  }
+}
+
+function renderDebateState(state) {
+  if (!state) return;
+
+  // Update debate info
+  const info = document.getElementById('debate-info');
+  const msgs = document.getElementById('debate-messages');
+  const agents = document.getElementById('debate-agents');
+  const consensus = document.getElementById('debate-consensus');
+
+  if (info) {
+    info.innerHTML = `
+      <strong>Tema:</strong> ${state.topic || '(sin tema)'}<br>
+      <strong>Estado:</strong> ${state.active ? '🟢 Activo' : '⏸️ Inactivo'}<br>
+      <strong>Iniciado:</strong> ${state.started ? new Date(state.started).toLocaleString() : '-'}
+    `;
+  }
+
+  // Messages
+  if (msgs && state.messages) {
+    if (state.messages.length === 0) {
+      msgs.innerHTML = '<div class="chat-placeholder">No messages yet. Start a debate!</div>';
+    } else {
+      msgs.innerHTML = state.messages.slice(-50).map(m => {
+        const isUser = m.sender === 'user';
+        const isSystem = m.is_system;
+        const roleColor = m.role ? getRoleColor(m.role) : 'var(--muted)';
+
+        if (isSystem) {
+          return `<div class="chat-msg system"><div class="text" style="color:var(--muted);font-style:italic;">${escapeHtml(m.text)}</div></div>`;
+        }
+        return `
+          <div class="chat-msg ${isUser ? 'user' : 'agent'}">
+            <div class="sender" style="color:${isUser ? 'var(--green)' : roleColor}">
+              ${isUser ? 'You' : `${m.role_label || m.sender}: ${m.sender}`}
+            </div>
+            <div class="text">${escapeHtml(m.text)}</div>
+          </div>`;
+      }).join('');
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+  }
+
+  // Agents
+  if (agents && state.agents) {
+    if (state.agents.length === 0) {
+      agents.innerHTML = '<div class="table-placeholder">No agents in debate.</div>';
+    } else {
+      agents.innerHTML = state.agents.map(a => `
+        <div class="agent-row">
+          <div>
+            <span class="agent-name">${a.agent_name}</span>
+            <span style="color:${a.color};font-size:12px;">${a.role_label}</span>
+          </div>
+          <div>
+            <span style="font-size:18px;">${a.vote_symbol}</span>
+            <span class="ctx-bar" style="margin-left:8px;">
+              <span class="ctx-fill"><span class="ctx-fill-inner" style="width:${a.context_pct}%"></span></span>
+              <span class="ctx-pct">${a.context_pct}%</span>
+            </span>
+            <span style="color:var(--muted);font-size:11px;margin-left:8px;">${a.status_text || ''}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // Consensus
+  if (consensus && state.consensus) {
+    const c = state.consensus;
+    consensus.innerHTML = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div class="stat-card"><div class="stat-value">${c.consensus_pct || 0}%</div><div class="stat-label">Consenso</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--green)">● ${c.agree_count || 0}</div><div class="stat-label">A favor</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--red)">○ ${c.disagree_count || 0}</div><div class="stat-label">En contra</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--yellow)">? ${c.confused_count || 0}</div><div class="stat-label">Confundidos</div></div>
+        <div class="stat-card"><div class="stat-value">${c.avg_context_pct || 0}%</div><div class="stat-label">Contexto promedio</div></div>
+      </div>
+    `;
+  }
+}
+
+function getRoleColor(role) {
+  const colors = {
+    'estratega': '#AA66FF',
+    'critico': '#FF3333',
+    'acelerador': '#00FF41',
+    'disenador': '#00FFAA',
+    'vigia': '#FF8800',
+    'sintetizador': '#FFB000',
+  };
+  return colors[role] || '#CCCCCC';
+}
+
+// Debate actions from Dashboard
+async function sendDebateMessage() {
+  const input = document.getElementById('debate-chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  try {
+    const res = await API.post('/debate/message', { message: msg });
+    renderDebateState(res.state);
+    loadDebate();
+  } catch (err) {
+    toast(`Error: ${err.message}`);
+  }
 }
 
 // ---- Agents ----
@@ -383,6 +509,7 @@ function startPolling() {
   pollInterval = setInterval(() => {
     loadDashboard();
     loadAgentsList();
+    loadDebate();
     checkHealth();
   }, 3000);
 }
